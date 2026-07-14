@@ -1,0 +1,15 @@
+# Rust build artifacts
+/target
+**/target
+Cargo.lock
+
+# Soroban / Stellar
+*.wasm
+.soroban/
+.stellar/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
