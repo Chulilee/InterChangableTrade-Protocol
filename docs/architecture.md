@@ -13,6 +13,7 @@ independent-but-composable smart contracts. Each contract lives under
 | `escrow`           | Holds a buyer's deposit per trade; releases to seller or refunds buyer. |
 | `trade-settlement` | Records a trade's lifecycle and drives it to settled/cancelled.       |
 | `fee-commission`   | Calculates, collects, and distributes protocol and maker/taker fees.  |
+| `liquidity-incentives` | Rewards liquidity providers over time via a reward-per-liquidity accumulator. |
 
 ## Typical flow
 
