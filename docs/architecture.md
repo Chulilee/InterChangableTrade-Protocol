@@ -12,6 +12,7 @@ independent-but-composable smart contracts. Each contract lives under
 | `marketplace`      | Fixed-price listings: sellers offer assets, buyers fill, sellers cancel. |
 | `escrow`           | Holds a buyer's deposit per trade; releases to seller or refunds buyer. |
 | `trade-settlement` | Records a trade's lifecycle and drives it to settled/cancelled.       |
+| `fee-commission`   | Calculates, collects, and distributes protocol and maker/taker fees.  |
 
 ## Typical flow
 
