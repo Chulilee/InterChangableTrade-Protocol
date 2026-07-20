@@ -100,8 +100,11 @@ impl EscrowContract {
             return Err(Error::NotFunded);
         }
         escrow.state = State::Released;
-        env.storage().persistent().set(&DataKey::Escrow(trade_id), &escrow);
-        env.events().publish((EVT_RELEASED, trade_id), escrow.clone());
+        env.storage()
+            .persistent()
+            .set(&DataKey::Escrow(trade_id), &escrow);
+        env.events()
+            .publish((EVT_RELEASED, trade_id), escrow.clone());
         Ok(escrow)
     }
 
@@ -114,8 +117,11 @@ impl EscrowContract {
             return Err(Error::NotFunded);
         }
         escrow.state = State::Refunded;
-        env.storage().persistent().set(&DataKey::Escrow(trade_id), &escrow);
-        env.events().publish((EVT_REFUNDED, trade_id), escrow.clone());
+        env.storage()
+            .persistent()
+            .set(&DataKey::Escrow(trade_id), &escrow);
+        env.events()
+            .publish((EVT_REFUNDED, trade_id), escrow.clone());
         Ok(escrow)
     }
 

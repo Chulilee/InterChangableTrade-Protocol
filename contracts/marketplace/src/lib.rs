@@ -106,7 +106,9 @@ impl Marketplace {
             price,
             status: Status::Open,
         };
-        env.storage().persistent().set(&DataKey::Listing(id), &listing);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Listing(id), &listing);
         env.storage().instance().set(&DataKey::NextId, &(id + 1));
 
         env.events().publish((EVT_LISTED, id), listing);
@@ -122,7 +124,9 @@ impl Marketplace {
             return Err(Error::ListingNotOpen);
         }
         listing.status = Status::Filled;
-        env.storage().persistent().set(&DataKey::Listing(id), &listing);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Listing(id), &listing);
 
         env.events().publish((EVT_FILLED, id), buyer);
         Ok(listing)
@@ -139,7 +143,9 @@ impl Marketplace {
             return Err(Error::ListingNotOpen);
         }
         listing.status = Status::Cancelled;
-        env.storage().persistent().set(&DataKey::Listing(id), &listing);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Listing(id), &listing);
 
         env.events().publish((EVT_CANCEL, id), ());
         Ok(())

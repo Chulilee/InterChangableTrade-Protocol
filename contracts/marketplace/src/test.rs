@@ -30,7 +30,9 @@ fn setup() -> Fixture {
 #[test]
 fn create_and_get_listing() {
     let f = setup();
-    let id = f.client.create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
+    let id = f
+        .client
+        .create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
     let listing = f.client.get(&id);
     assert_eq!(listing.amount, 10);
     assert_eq!(listing.price, 100);
@@ -40,7 +42,9 @@ fn create_and_get_listing() {
 #[test]
 fn create_with_invalid_amount_fails() {
     let f = setup();
-    let res = f.client.try_create_listing(&f.seller, &f.asset, &f.quote, &0, &100);
+    let res = f
+        .client
+        .try_create_listing(&f.seller, &f.asset, &f.quote, &0, &100);
     assert_eq!(res, Err(Ok(Error::InvalidAmount)));
 }
 
@@ -48,7 +52,9 @@ fn create_with_invalid_amount_fails() {
 fn fill_listing_marks_filled() {
     let f = setup();
     let buyer = Address::generate(&f.env);
-    let id = f.client.create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
+    let id = f
+        .client
+        .create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
     let filled = f.client.fill_listing(&id, &buyer);
     assert_eq!(filled.status, Status::Filled);
     assert_eq!(f.client.get(&id).status, Status::Filled);
@@ -58,7 +64,9 @@ fn fill_listing_marks_filled() {
 fn fill_twice_fails() {
     let f = setup();
     let buyer = Address::generate(&f.env);
-    let id = f.client.create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
+    let id = f
+        .client
+        .create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
     f.client.fill_listing(&id, &buyer);
     let res = f.client.try_fill_listing(&id, &buyer);
     assert_eq!(res, Err(Ok(Error::ListingNotOpen)));
@@ -67,7 +75,9 @@ fn fill_twice_fails() {
 #[test]
 fn cancel_listing() {
     let f = setup();
-    let id = f.client.create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
+    let id = f
+        .client
+        .create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
     f.client.cancel_listing(&id, &f.seller);
     assert_eq!(f.client.get(&id).status, Status::Cancelled);
 }
@@ -76,7 +86,9 @@ fn cancel_listing() {
 fn cancel_by_non_seller_fails() {
     let f = setup();
     let stranger = Address::generate(&f.env);
-    let id = f.client.create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
+    let id = f
+        .client
+        .create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
     let res = f.client.try_cancel_listing(&id, &stranger);
     assert_eq!(res, Err(Ok(Error::NotSeller)));
 }

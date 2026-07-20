@@ -59,7 +59,9 @@ impl AssetRegistry {
             return Err(Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::Assets, &Vec::<Address>::new(&env));
+        env.storage()
+            .instance()
+            .set(&DataKey::Assets, &Vec::<Address>::new(&env));
         Ok(())
     }
 
@@ -73,10 +75,18 @@ impl AssetRegistry {
             return Err(Error::AssetExists);
         }
 
-        let asset = Asset { token: token.clone(), symbol, enabled: true };
+        let asset = Asset {
+            token: token.clone(),
+            symbol,
+            enabled: true,
+        };
         env.storage().persistent().set(&key, &asset);
 
-        let mut assets: Vec<Address> = env.storage().instance().get(&DataKey::Assets).unwrap_or(Vec::new(&env));
+        let mut assets: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Assets)
+            .unwrap_or(Vec::new(&env));
         assets.push_back(token.clone());
         env.storage().instance().set(&DataKey::Assets, &assets);
 
@@ -95,7 +105,11 @@ impl AssetRegistry {
         }
         env.storage().persistent().remove(&key);
 
-        let assets: Vec<Address> = env.storage().instance().get(&DataKey::Assets).unwrap_or(Vec::new(&env));
+        let assets: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Assets)
+            .unwrap_or(Vec::new(&env));
         let mut remaining = Vec::new(&env);
         for a in assets.iter() {
             if a != token {
@@ -118,11 +132,17 @@ impl AssetRegistry {
 
     /// List all registered asset addresses.
     pub fn list(env: Env) -> Vec<Address> {
-        env.storage().instance().get(&DataKey::Assets).unwrap_or(Vec::new(&env))
+        env.storage()
+            .instance()
+            .get(&DataKey::Assets)
+            .unwrap_or(Vec::new(&env))
     }
 
     fn admin(env: &Env) -> Result<Address, Error> {
-        env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
     }
 }
 
