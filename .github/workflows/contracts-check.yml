@@ -1,0 +1,50 @@
+name: Contracts Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  check-contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      working-directory: contracts
+    strategy:
+      matrix:
+        contract: [asset-registry, escrow, marketplace, trade-settlement, margining-liquidation]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          target: wasm32-unknown-unknown
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run cargo check
+        run: cd ${{ matrix.contract }} && cargo check --lib
+
+      - name: Run cargo fmt (lint check)
+        run: cd ${{ matrix.contract }} && cargo fmt --all --check
+
+      - name: Run cargo clippy
+        run: cd ${{ matrix.contract }} && cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build WASM binary
+        run: cd ${{ matrix.contract }} && cargo build --target wasm32-unknown-unknown --release
+
+      - name: Run tests
+        run: cd ${{ matrix.contract }} && cargo test
