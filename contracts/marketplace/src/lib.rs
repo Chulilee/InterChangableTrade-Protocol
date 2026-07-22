@@ -10,6 +10,8 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
 };
+use risk_management;
+
 
 /// Storage keys for the marketplace.
 #[contracttype]
@@ -17,6 +19,8 @@ use soroban_sdk::{
 pub enum DataKey {
     /// The admin authorized to administer the marketplace.
     Admin,
+    /// The address of the risk management contract.
+    RiskManager, 
     /// Auto-incrementing id for the next listing.
     NextId,
     /// A listing keyed by its id.
@@ -81,6 +85,17 @@ impl Marketplace {
         Ok(())
     }
 
+    pub fn set_risk_manager(
+        env: Env,
+        risk_manager: Address,
+    ) -> Result<(), Error> {
+        Self::ensure_init(&env)?;
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::RiskManager, &risk_manager);
+        Ok(())
+    }
+
     /// Create a new listing. Requires the seller's authorization.
     pub fn create_listing(
         env: Env,
@@ -95,6 +110,10 @@ impl Marketplace {
         if amount <= 0 || price <= 0 {
             return Err(Error::InvalidAmount);
         }
+
+        let rm: Address = env.storage().instance().get(&DataKey::RiskManager).unwrap();
+        let rm_client = risk_management::Client::new(&env, &rm);
+        rm_client.check_limits(&amount, &seller);
 
         let id: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(0);
         let listing = Listing {
@@ -120,6 +139,10 @@ impl Marketplace {
     pub fn fill_listing(env: Env, id: u64, buyer: Address) -> Result<Listing, Error> {
         buyer.require_auth();
         let mut listing = Self::get(env.clone(), id)?;
+        let rm: Address = env.storage().instance().get(&DataKey::RiskManager).unwrap();
+        let rm_client = risk_management::Client::new(&env, &rm);
+        rm_client.check_limits(&listing.amount, &buyer);
+
         if listing.status != Status::Open {
             return Err(Error::ListingNotOpen);
         }
