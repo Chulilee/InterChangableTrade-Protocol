@@ -127,7 +127,7 @@ impl Governance {
         env.storage().persistent().set(&DataKey::ProposalMetadata(proposal_id), &metadata);
 
         env.events().publish(
-            (EVT_PROPOSAL_CREATED, proposal_id, proposer, description, target, value),
+            (Symbol::from_str(&env, "ProposalCreated"), proposal_id, proposer, description, target, value),
             (start_time, end_time, timelock, quorum, threshold),
         );
         Ok(proposal_id)
@@ -161,7 +161,7 @@ impl Governance {
             votes.push_back(VoteRecord { voter: voter.clone(), weight, support });
         }
         env.storage().persistent().set(&votes_key, &votes);
-        env.events().publish((EVT_VOTE_CAST, proposal_id, voter, support), weight);
+        env.events().publish((Symbol::from_str(&env, "VoteCast"), proposal_id, voter, support), weight);
         Ok(())
     }
 
@@ -184,7 +184,7 @@ impl Governance {
             return Err(Error::TimelockNotElapsed);
         }
         env.storage().persistent().set(&DataKey::ProposalQueue(proposal_id), &true);
-        env.events().publish((EVT_PROPOSAL_QUEUED, proposal_id, caller), (now, metadata.timelock));
+        env.events().publish((Symbol::from_str(&env, "ProposalQueued"), proposal_id, caller), (now, metadata.timelock));
         Ok(())
     }
 
@@ -210,7 +210,7 @@ impl Governance {
         env.storage()
             .persistent()
             .set(&DataKey::Parameter(metadata.target.clone()), &metadata.value);
-        env.events().publish((EVT_PROPOSAL_EXECUTED, proposal_id, caller), metadata.value);
+        env.events().publish((Symbol::from_str(&env, "ProposalExecuted"), proposal_id, caller), metadata.value);
         Ok(())
     }
 
