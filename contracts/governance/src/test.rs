@@ -48,6 +48,9 @@ fn full_lifecycle_create_vote_queue_execute() {
     assert_eq!(metadata.value, 100);
     let executed_state = client.get_state(&proposal_id);
     assert_eq!(executed_state, ProposalState::Executed);
+    assert_eq!(client.get_parameter(&symbol_short!("fee")), Some(100));
+    let events = env.events().all();
+    assert!(events.len() >= 4);
 }
 
 #[test]
