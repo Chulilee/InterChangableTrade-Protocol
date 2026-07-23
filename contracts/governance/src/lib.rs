@@ -1,8 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Map, Symbol,
-    Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
 };
 
 #[contracttype]
@@ -15,6 +14,7 @@ pub enum DataKey {
     ProposalQueue(u64),
     ProposalState(u64),
     ProposalMetadata(u64),
+    Parameter(Symbol),
 }
 
 #[contracttype]
@@ -207,6 +207,9 @@ impl Governance {
             return Err(Error::TimelockNotElapsed);
         }
         Self::set_state(&env, proposal_id, ProposalState::Executed);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Parameter(metadata.target.clone()), &metadata.value);
         env.events().publish((EVT_PROPOSAL_EXECUTED, proposal_id, caller), metadata.value);
         Ok(())
     }
@@ -232,7 +235,11 @@ impl Governance {
     }
 
     pub fn get_state(env: Env, proposal_id: u64) -> Result<ProposalState, Error> {
-        Self::get_state(&env, proposal_id)
+        Self::read_state(&env, proposal_id)
+    }
+
+    pub fn get_parameter(env: Env, key: Symbol) -> Option<i128> {
+        env.storage().persistent().get(&DataKey::Parameter(key))
     }
 
     pub fn get_votes(env: Env, proposal_id: u64) -> Result<Vec<VoteRecord>, Error> {
@@ -286,7 +293,7 @@ impl Governance {
             .ok_or(Error::ProposalNotFound)
     }
 
-    fn get_state(env: &Env, proposal_id: u64) -> Result<ProposalState, Error> {
+    fn read_state(env: &Env, proposal_id: u64) -> Result<ProposalState, Error> {
         env.storage()
             .persistent()
             .get(&DataKey::ProposalState(proposal_id))
