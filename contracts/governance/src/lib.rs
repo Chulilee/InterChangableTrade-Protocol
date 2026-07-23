@@ -139,7 +139,7 @@ impl Governance {
         if metadata.canceled {
             return Err(Error::Cancelled);
         }
-        let state = Self::get_state(&env, proposal_id)?;
+        let state = Self::read_state(&env, proposal_id)?;
         if state != ProposalState::Active {
             return Err(Error::InvalidState);
         }
@@ -220,7 +220,7 @@ impl Governance {
         if metadata.canceled {
             return Err(Error::Cancelled);
         }
-        let state = Self::get_state(&env, proposal_id)?;
+        let state = Self::read_state(&env, proposal_id)?;
         if state == ProposalState::Executed {
             return Err(Error::AlreadyExecuted);
         }
@@ -251,7 +251,7 @@ impl Governance {
         if metadata.canceled {
             return Err(Error::Cancelled);
         }
-        let state = Self::get_state(&env, proposal_id)?;
+        let state = Self::read_state(&env, proposal_id)?;
         if state != ProposalState::Active {
             return Err(Error::InvalidState);
         }
