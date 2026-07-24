@@ -4,7 +4,8 @@
 
 use soroban_sdk::{
     testutils::Env, Address, Symbol};
-use super::{PriceOracle, PriceOracleClient, Error, OracleSourceType, DataKey};
+use super::{PriceOracle, Error, OracleSourceType, DataKey};
+use crate::PriceOracleClient;
 
 #[test]
 fn test_initialize_and_set_source() {

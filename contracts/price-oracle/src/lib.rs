@@ -103,6 +103,7 @@ const ROLE_OPERATOR: Symbol = symbol_short!("OPERATOR");
 #[contract]
 pub struct PriceOracle;
 
+#[contractclient("price-oracle")]
 #[contractimpl]
 impl PriceOracle {
     /// Initialize the price oracle with an admin and base configuration.
