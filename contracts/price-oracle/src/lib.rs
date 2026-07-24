@@ -310,6 +310,8 @@ impl PriceOracle {
             .ok_or(Error::NotInitialized)?;
             
         let caller = env.invoker();
+        caller.require_auth();
+        
         // Call the access-control contract to check if the caller has the required role
         let has_role: bool = env
             .invoke_contract(
@@ -321,7 +323,6 @@ impl PriceOracle {
         if !has_role {
             return Err(Error::Unauthorized);
         }
-        caller.require_auth();
         Ok(())
     }
 }
