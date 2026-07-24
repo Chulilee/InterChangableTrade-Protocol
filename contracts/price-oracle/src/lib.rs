@@ -149,6 +149,7 @@ impl PriceOracle {
             .set(&DataKey::Source(source_type.clone()), &source);
 
         // If this is the first source, set it as active
+        // If this is the first source, set it as active
         if !env.storage().instance().has(&DataKey::ActiveSource) {
             env.storage().instance().set(&DataKey::ActiveSource, &source_type);
         }
@@ -301,18 +302,24 @@ impl PriceOracle {
         Self::switch_to_secondary(env)
     }
 
-    /// Internal helper to check caller authorization.
+    /// Internal helper to check caller authorization using the access-control contract.
     fn require_role(env: &Env, required_role: Symbol) -> Result<(), Error> {
-        let admin: Address = env
+        let access_control: Address = env
             .storage()
             .instance()
-            .get(&DataKey::Admin)
+            .get(&DataKey::AccessControl)
             .ok_or(Error::NotInitialized)?;
             
         let caller = env.invoker();
-        // For simplicity, admin always has all roles; in production this would integrate
-        // with the access-control contract's has_role function
-        if caller != admin {
+        // Call the access-control contract to check if the caller has the required role
+        let has_role: bool = env
+            .invoke_contract(
+                &access_control,
+                Symbol::new("has_role"),
+                (&required_role, caller.clone()),
+            );
+            
+        if !has_role {
             return Err(Error::Unauthorized);
         }
         caller.require_auth();
