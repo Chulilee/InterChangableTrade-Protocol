@@ -72,9 +72,15 @@ fn test_calculate_fees_maker_and_taker() {
     let payer = Address::generate(&env);
 
     // 10 bps of 1_000_000 = 1000.
-    assert_eq!(client.calculate_fees(&payer, &1_000_000, &Side::Maker), 1_000);
+    assert_eq!(
+        client.calculate_fees(&payer, &1_000_000, &Side::Maker),
+        1_000
+    );
     // 20 bps of 1_000_000 = 2000.
-    assert_eq!(client.calculate_fees(&payer, &1_000_000, &Side::Taker), 2_000);
+    assert_eq!(
+        client.calculate_fees(&payer, &1_000_000, &Side::Taker),
+        2_000
+    );
 }
 
 #[test]
@@ -89,7 +95,10 @@ fn test_calculate_fees_exempt_is_zero() {
     assert!(client.is_exempt(&payer));
 
     client.set_exempt(&payer, &false);
-    assert_eq!(client.calculate_fees(&payer, &1_000_000, &Side::Taker), 2_000);
+    assert_eq!(
+        client.calculate_fees(&payer, &1_000_000, &Side::Taker),
+        2_000
+    );
     assert!(!client.is_exempt(&payer));
 }
 

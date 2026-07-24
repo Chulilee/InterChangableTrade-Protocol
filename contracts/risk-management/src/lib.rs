@@ -1,102 +1,111 @@
-#![cfg_attr(not(feature = "std"), no_std, no_main)]
+#![no_std]
 
-#[ink::contract]
-pub mod risk_management {
-    use ink::storage::Mapping;
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+};
 
-    #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
-    pub enum RiskError {
-        MarketPaused,
-        MaxOrderSizeExceeded,
-        CumulativeExposureExceeded,
-        Unauthorized,
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    MarketPaused,
+    MaxOrderSize,
+    Pauser,
+    CumulativeExposure(Address),
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum RiskError {
+    MarketPaused = 1,
+    MaxOrderSizeExceeded = 2,
+    CumulativeExposureExceeded = 3,
+    Unauthorized = 4,
+}
+
+const EVT_MKT_PAUSED: Symbol = symbol_short!("mkt_paus");
+const EVT_MKT_UNPAUS: Symbol = symbol_short!("mkt_unp");
+const EVT_LIM_UPDATED: Symbol = symbol_short!("lim_upd");
+
+#[contract]
+pub struct RiskManager;
+
+#[contractimpl]
+impl RiskManager {
+    pub fn initialize(env: Env, pauser: Address, max_order_size: i128) -> Result<(), RiskError> {
+        if env.storage().instance().has(&DataKey::Pauser) {
+            return Err(RiskError::Unauthorized);
+        }
+        pauser.require_auth();
+        env.storage().instance().set(&DataKey::Pauser, &pauser);
+        env.storage().instance().set(&DataKey::MarketPaused, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxOrderSize, &max_order_size);
+        Ok(())
     }
 
-    #[ink(storage)]
-    pub struct RiskManager {
-        market_paused: bool,
-        max_order_size: Balance,
-        cumulative_exposure: Mapping<AccountId, Balance>,
-        pauser: AccountId,
+    pub fn pause_market(env: Env, caller: Address) -> Result<(), RiskError> {
+        caller.require_auth();
+        let pauser: Address = env.storage().instance().get(&DataKey::Pauser).unwrap();
+        if caller != pauser {
+            return Err(RiskError::Unauthorized);
+        }
+        env.storage().instance().set(&DataKey::MarketPaused, &true);
+        env.events().publish((EVT_MKT_PAUSED,), pauser);
+        Ok(())
     }
 
-    #[ink(event)]
-    pub struct MarketPaused {
-        #[ink(topic)]
-        by: AccountId,
+    pub fn unpause_market(env: Env, caller: Address) -> Result<(), RiskError> {
+        caller.require_auth();
+        let pauser: Address = env.storage().instance().get(&DataKey::Pauser).unwrap();
+        if caller != pauser {
+            return Err(RiskError::Unauthorized);
+        }
+        env.storage().instance().set(&DataKey::MarketPaused, &false);
+        env.events().publish((EVT_MKT_UNPAUS,), pauser);
+        Ok(())
     }
 
-    #[ink(event)]
-    pub struct MarketUnpaused {
-        #[ink(topic)]
-        by: AccountId,
+    pub fn set_limit(env: Env, caller: Address, max_order_size: i128) -> Result<(), RiskError> {
+        caller.require_auth();
+        let pauser: Address = env.storage().instance().get(&DataKey::Pauser).unwrap();
+        if caller != pauser {
+            return Err(RiskError::Unauthorized);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxOrderSize, &max_order_size);
+        env.events()
+            .publish((EVT_LIM_UPDATED,), (pauser, max_order_size));
+        Ok(())
     }
 
-    #[ink(event)]
-    pub struct LimitUpdated {
-        #[ink(topic)]
-        by: AccountId,
-        max_order_size: Balance,
-    }
-
-    impl RiskManager {
-        #[ink(constructor)]
-        pub fn new(pauser: AccountId, max_order_size: Balance) -> Self {
-            Self {
-                market_paused: false,
-                max_order_size,
-                cumulative_exposure: Mapping::new(),
-                pauser,
-            }
+    pub fn check_limits(env: Env, order_size: i128, trader: Address) -> Result<(), RiskError> {
+        let market_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::MarketPaused)
+            .unwrap_or(false);
+        if market_paused {
+            return Err(RiskError::MarketPaused);
         }
-
-        #[ink(message)]
-        pub fn pause_market(&mut self) -> Result<(), RiskError> {
-            if self.env().caller() != self.pauser {
-                return Err(RiskError::Unauthorized);
-            }
-            self.market_paused = true;
-            self.env().emit_event(MarketPaused { by: self.env().caller() });
-            Ok(())
+        let max_order_size: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::MaxOrderSize)
+            .unwrap();
+        if order_size > max_order_size {
+            return Err(RiskError::MaxOrderSizeExceeded);
         }
-
-        #[ink(message)]
-        pub fn unpause_market(&mut self) -> Result<(), RiskError> {
-            if self.env().caller() != self.pauser {
-                return Err(RiskError::Unauthorized);
-            }
-            self.market_paused = false;
-            self.env().emit_event(MarketUnpaused { by: self.env().caller() });
-            Ok(())
+        let exposure: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::CumulativeExposure(trader.clone()))
+            .unwrap_or(0);
+        if exposure.checked_add(order_size).is_none() {
+            return Err(RiskError::CumulativeExposureExceeded);
         }
-
-        #[ink(message)]
-        pub fn set_limit(&mut self, max_order_size: Balance) -> Result<(), RiskError> {
-            if self.env().caller() != self.pauser {
-                return Err(RiskError::Unauthorized);
-            }
-            self.max_order_size = max_order_size;
-            self.env().emit_event(LimitUpdated {
-                by: self.env().caller(),
-                max_order_size,
-            });
-            Ok(())
-        }
-
-        #[ink(message)]
-        pub fn check_limits(&self, order_size: Balance, trader: AccountId) -> Result<(), RiskError> {
-            if self.market_paused {
-                return Err(RiskError::MarketPaused);
-            }
-            if order_size > self.max_order_size {
-                return Err(RiskError::MaxOrderSizeExceeded);
-            }
-            let exposure = self.cumulative_exposure.get(&trader).unwrap_or(0);
-            if exposure.checked_add(order_size).is_none() {
-                return Err(RiskError::CumulativeExposureExceeded);
-            }
-            Ok(())
-        }
+        Ok(())
     }
 }

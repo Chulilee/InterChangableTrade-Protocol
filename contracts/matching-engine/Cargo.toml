@@ -1,5 +1,5 @@
 [package]
-name = "risk-management"
+name = "matching-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
