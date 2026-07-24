@@ -106,19 +106,19 @@ pub struct PriceOracle;
 #[contractclient("price-oracle")]
 #[contractimpl]
 impl PriceOracle {
-    /// Initialize the price oracle with an admin and base configuration.
+    /// Initialize the price oracle with an access control contract and base configuration.
     pub fn initialize(
         env: Env,
-        admin: Address,
+        access_control: Address,
         max_deviation_bps: u32,
         freshness_threshold: u64,
         twap_window: u64,
     ) -> Result<(), Error> {
-        if env.storage().instance().has(&DataKey::Admin) {
+        if env.storage().instance().has(&DataKey::AccessControl) {
             return Err(Error::AlreadyInitialized);
         }
 
-        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::AccessControl, &access_control);
 
         let config = OracleConfig {
             max_deviation_bps,
