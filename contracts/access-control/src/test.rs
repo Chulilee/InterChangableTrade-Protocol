@@ -1,7 +1,11 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Events},
+    Address, Env,
+};
 
 fn setup() -> (Env, AccessControlClient<'static>, Address) {
     let env = Env::default();
@@ -102,7 +106,7 @@ fn unauthorized_revoke_fails() {
 fn events_are_emitted_on_grant() {
     let (env, client, admin) = setup();
     let account = Address::generate(&env);
-    
+
     client.grant_role(&ROLE_OPERATOR, &account);
     let events = env.events().all();
     assert_eq!(events.len(), 2);
@@ -112,10 +116,10 @@ fn events_are_emitted_on_grant() {
 fn events_are_emitted_on_revoke() {
     let (env, client, admin) = setup();
     let account = Address::generate(&env);
-    
+
     client.grant_role(&ROLE_OPERATOR, &account);
     client.revoke_role(&ROLE_OPERATOR, &account);
-    
+
     let events = env.events().all();
     assert_eq!(events.len(), 3);
 }
@@ -124,7 +128,7 @@ fn events_are_emitted_on_revoke() {
 fn get_and_set_role_admin() {
     let (env, client, admin) = setup();
     assert_eq!(client.get_role_admin(&ROLE_OPERATOR), ROLE_ADMIN);
-    
+
     let new_admin_role = symbol_short!("NEW_ADMIN");
     client.set_role_admin(&ROLE_OPERATOR, &new_admin_role);
     assert_eq!(client.get_role_admin(&ROLE_OPERATOR), new_admin_role);
@@ -145,7 +149,7 @@ fn transfer_admin_role() {
     let new_admin = Address::generate(&env);
     client.grant_role(&ROLE_ADMIN, &new_admin);
     assert!(client.has_role(&ROLE_ADMIN, &new_admin));
-    
+
     let new_admin_role = symbol_short!("NEW_ADMIN");
     client.set_role_admin(&ROLE_OPERATOR, &new_admin_role);
     assert_eq!(client.get_role_admin(&ROLE_OPERATOR), new_admin_role);

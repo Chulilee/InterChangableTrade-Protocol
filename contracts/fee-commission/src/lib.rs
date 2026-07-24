@@ -210,8 +210,7 @@ impl FeeCommission {
         let pooled: i128 = env.storage().persistent().get(&pool_key).unwrap_or(0);
         env.storage().persistent().set(&pool_key, &(pooled + fee));
 
-        env.events()
-            .publish((EVT_FEE_COLLECTED, payer, asset), fee);
+        env.events().publish((EVT_FEE_COLLECTED, payer, asset), fee);
         Ok(fee)
     }
 

@@ -7,11 +7,10 @@
 //! settlement of funds/assets is handled by the escrow and settlement
 //! contracts.
 
+use risk_management;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
 };
-use risk_management;
-
 
 /// Storage keys for the marketplace.
 #[contracttype]
@@ -20,7 +19,7 @@ pub enum DataKey {
     /// The admin authorized to administer the marketplace.
     Admin,
     /// The address of the risk management contract.
-    RiskManager, 
+    RiskManager,
     /// Auto-incrementing id for the next listing.
     NextId,
     /// A listing keyed by its id.
@@ -85,14 +84,13 @@ impl Marketplace {
         Ok(())
     }
 
-    pub fn set_risk_manager(
-        env: Env,
-        risk_manager: Address,
-    ) -> Result<(), Error> {
+    pub fn set_risk_manager(env: Env, risk_manager: Address) -> Result<(), Error> {
         Self::ensure_init(&env)?;
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        env.storage().instance().set(&DataKey::RiskManager, &risk_manager);
+        env.storage()
+            .instance()
+            .set(&DataKey::RiskManager, &risk_manager);
         Ok(())
     }
 
@@ -112,7 +110,7 @@ impl Marketplace {
         }
 
         let rm: Address = env.storage().instance().get(&DataKey::RiskManager).unwrap();
-        let rm_client = risk_management::Client::new(&env, &rm);
+        let rm_client = risk_management::RiskManagerClient::new(&env, &rm);
         rm_client.check_limits(&amount, &seller);
 
         let id: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(0);
@@ -140,7 +138,7 @@ impl Marketplace {
         buyer.require_auth();
         let mut listing = Self::get(env.clone(), id)?;
         let rm: Address = env.storage().instance().get(&DataKey::RiskManager).unwrap();
-        let rm_client = risk_management::Client::new(&env, &rm);
+        let rm_client = risk_management::RiskManagerClient::new(&env, &rm);
         rm_client.check_limits(&listing.amount, &buyer);
 
         if listing.status != Status::Open {

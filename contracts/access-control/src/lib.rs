@@ -23,7 +23,7 @@ pub enum Error {
     RoleAlreadyExists = 5,
 }
 
-const EVT_ROLE_GRANTED: Symbol = symbol_short!("role_grntd");
+const EVT_ROLE_GRANTED: Symbol = symbol_short!("role_grnt");
 const EVT_ROLE_REVOKED: Symbol = symbol_short!("role_rvkd");
 
 const ROLE_ADMIN: Symbol = symbol_short!("ADMIN");
@@ -49,24 +49,48 @@ impl AccessControl {
         Ok(())
     }
 
-    pub fn grant_role(env: Env, role: Symbol, account: Address) -> Result<(), Error> {
-        let role_admin = Self::get_role_admin_internal(&env, role)?;
-        Self::require_role(&env, role_admin)?;
+    pub fn grant_role(
+        env: Env,
+        role: Symbol,
+        account: Address,
+        caller: Address,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+        let role_admin = Self::get_role_admin_internal(&env, role.clone())?;
+        if !Self::has_role(env.clone(), role_admin, caller.clone()) {
+            return Err(Error::Unauthorized);
+        }
 
         Self::grant_role_internal(&env, role, account);
         Ok(())
     }
 
-    pub fn revoke_role(env: Env, role: Symbol, account: Address) -> Result<(), Error> {
-        let role_admin = Self::get_role_admin_internal(&env, role)?;
-        Self::require_role(&env, role_admin)?;
+    pub fn revoke_role(
+        env: Env,
+        role: Symbol,
+        account: Address,
+        caller: Address,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+        let role_admin = Self::get_role_admin_internal(&env, role.clone())?;
+        if !Self::has_role(env.clone(), role_admin, caller.clone()) {
+            return Err(Error::Unauthorized);
+        }
 
         Self::revoke_role_internal(&env, role, account);
         Ok(())
     }
 
-    pub fn renounce_role(env: Env, role: Symbol, account: Address) -> Result<(), Error> {
-        account.require_auth();
+    pub fn renounce_role(
+        env: Env,
+        role: Symbol,
+        account: Address,
+        caller: Address,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+        if caller != account {
+            return Err(Error::Unauthorized);
+        }
         Self::revoke_role_internal(&env, role, account);
         Ok(())
     }
@@ -81,8 +105,16 @@ impl AccessControl {
         Self::get_role_admin_internal(&env, role)
     }
 
-    pub fn set_role_admin(env: Env, role: Symbol, admin_role: Symbol) -> Result<(), Error> {
-        Self::require_role(&env, ROLE_ADMIN)?;
+    pub fn set_role_admin(
+        env: Env,
+        role: Symbol,
+        admin_role: Symbol,
+        caller: Address,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+        if !Self::has_role(env.clone(), ROLE_ADMIN, caller.clone()) {
+            return Err(Error::Unauthorized);
+        }
         Self::set_role_admin_internal(&env, role, admin_role);
         Ok(())
     }
@@ -95,32 +127,21 @@ impl AccessControl {
     }
 
     fn grant_role_internal(env: &Env, role: Symbol, account: Address) {
-        let key = DataKey::Role(role, account.clone());
+        let key = DataKey::Role(role.clone(), account.clone());
         if env.storage().persistent().has(&key) {
             return;
         }
         env.storage().persistent().set(&key, &());
-        env.events()
-            .publish((EVT_ROLE_GRANTED, role, account), ());
+        env.events().publish((EVT_ROLE_GRANTED, role, account), ());
     }
 
     fn revoke_role_internal(env: &Env, role: Symbol, account: Address) {
-        let key = DataKey::Role(role, account.clone());
+        let key = DataKey::Role(role.clone(), account.clone());
         if !env.storage().persistent().has(&key) {
             return;
         }
         env.storage().persistent().remove(&key);
-        env.events()
-            .publish((EVT_ROLE_REVOKED, role, account), ());
-    }
-
-    fn require_role(env: &Env, role: Symbol) -> Result<(), Error> {
-        let caller = env.invoker();
-        if !Self::has_role(env.clone(), role, caller.clone()) {
-            return Err(Error::Unauthorized);
-        }
-        caller.require_auth();
-        Ok(())
+        env.events().publish((EVT_ROLE_REVOKED, role, account), ());
     }
 
     fn get_role_admin_internal(env: &Env, role: Symbol) -> Result<Symbol, Error> {
