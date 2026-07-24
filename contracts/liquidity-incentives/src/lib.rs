@@ -449,8 +449,7 @@ impl LiquidityIncentives {
 
     /// Rewards earned by a position at accumulator value `rpt`.
     fn earned(position: &Position, rpt: i128) -> i128 {
-        position.rewards
-            + position.liquidity * (rpt - position.reward_per_token_paid) / PRECISION
+        position.rewards + position.liquidity * (rpt - position.reward_per_token_paid) / PRECISION
     }
 
     /// Advance a pool's stored accumulator to the current ledger time.

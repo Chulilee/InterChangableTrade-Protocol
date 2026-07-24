@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Events, Ledger},
+    Address, Env,
+};
 
 fn setup() -> (Env, GovernanceClient<'static>, Address) {
     let env = Env::default();
@@ -23,7 +26,7 @@ fn full_lifecycle_create_vote_queue_execute() {
 
     let proposal_id = client.propose(
         &proposer,
-        &symbol_short!("fee_change"),
+        &symbol_short!("fee_chng"),
         &symbol_short!("fee"),
         &100,
         &10,
