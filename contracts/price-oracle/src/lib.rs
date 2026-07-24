@@ -79,8 +79,8 @@ pub enum Error {
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    /// Admin address
-    Admin,
+    /// Access control contract address
+    AccessControl,
     /// Oracle configuration
     Config,
     /// Oracle source, keyed by source type
