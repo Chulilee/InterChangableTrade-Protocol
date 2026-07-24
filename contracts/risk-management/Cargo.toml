@@ -1,25 +1,16 @@
 [package]
 name = "risk-management"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-ink = { version = "4.3.0", default-features = false }
-scale = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive"] }
-scale-info = { version = "2.6", default-features = false, features = ["derive"], optional = true }
-
-[dev-dependencies]
-ink_e2e = "4.3.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
-path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+doctest = false
 
-[features]
-default = ["std"]
-std = [
-    "ink/std",
-    "scale/std",
-    "scale-info/std",
-]
-ink-as-dependency = []
-e2e-tests = []
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
