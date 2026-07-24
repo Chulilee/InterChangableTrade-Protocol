@@ -4,21 +4,33 @@
 
 use soroban_sdk::{
     testutils::Env, Address, Symbol};
+use access_control::AccessControl;
 use super::{PriceOracle, Error, OracleSourceType, DataKey};
 use crate::PriceOracleClient;
+use access_control::AccessControlClient;
 
 #[test]
 fn test_initialize_and_set_source() {
     let env = Env::default();
     let admin = Address::generate(&env);
+    
+    // Register and initialize access control first
+    let ac_address = env.register_contract(None, AccessControl);
+    let ac_client = AccessControlClient::new(&env, &ac_address);
+    ac_client.initialize(&admin);
+    
+    // Register price oracle
     let oracle_address = env.register_contract(None, PriceOracle);
     let client = PriceOracleClient::new(&env, &oracle_address);
 
-    // Initialize with 5% max deviation, 3600s freshness threshold, 86400s TWAP window
-    client.initialize(&admin, &500, &3600, &86400);
+    // Initialize oracle with access control contract address
+    client.initialize(&ac_address, &500, &3600, &86400);
 
-    // Set primary source
+    // Grant admin role to our test admin if not already granted (it's granted during AC initialization)
+    
+    // Set primary source (call as admin who has ROLE_ADMIN)
     let primary_address = Address::generate(&env);
+    env.set_invoker(admin.clone());
     client.set_oracle_source(&OracleSourceType::Primary, &primary_address);
     
     // Verify active source is primary

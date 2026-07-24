@@ -149,7 +149,6 @@ impl PriceOracle {
             .set(&DataKey::Source(source_type.clone()), &source);
 
         // If this is the first source, set it as active
-        // If this is the first source, set it as active
         if !env.storage().instance().has(&DataKey::ActiveSource) {
             env.storage().instance().set(&DataKey::ActiveSource, &source_type);
         }
