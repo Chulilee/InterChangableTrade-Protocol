@@ -7,9 +7,9 @@
 //! settlement of funds/assets is handled by the escrow and settlement
 //! contracts.
 
-use risk_management;
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal,
+    Symbol,
 };
 
 /// Storage keys for the marketplace.
@@ -109,9 +109,9 @@ impl Marketplace {
             return Err(Error::InvalidAmount);
         }
 
-        let rm: Address = env.storage().instance().get(&DataKey::RiskManager).unwrap();
-        let rm_client = risk_management::RiskManagerClient::new(&env, &rm);
-        rm_client.check_limits(&amount, &seller);
+        // Validate against the risk-management contract before recording the
+        // listing. This reverts the call if the risk contract rejects the order.
+        Self::check_risk(&env, amount, &seller);
 
         let id: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(0);
         let listing = Listing {
@@ -137,13 +137,11 @@ impl Marketplace {
     pub fn fill_listing(env: Env, id: u64, buyer: Address) -> Result<Listing, Error> {
         buyer.require_auth();
         let mut listing = Self::get(env.clone(), id)?;
-        let rm: Address = env.storage().instance().get(&DataKey::RiskManager).unwrap();
-        let rm_client = risk_management::RiskManagerClient::new(&env, &rm);
-        rm_client.check_limits(&listing.amount, &buyer);
-
         if listing.status != Status::Open {
             return Err(Error::ListingNotOpen);
         }
+        Self::check_risk(&env, listing.amount, &buyer);
+
         listing.status = Status::Filled;
         env.storage()
             .persistent()
@@ -186,6 +184,20 @@ impl Marketplace {
         } else {
             Err(Error::NotInitialized)
         }
+    }
+
+    /// Ask the configured risk-management contract to validate an order of
+    /// `amount` for `trader`. Invoked by raw symbol rather than a generated
+    /// client so the marketplace WASM does not link (and re-export) the
+    /// risk-management contract. If the risk contract returns an error the
+    /// host traps, reverting the calling invocation.
+    fn check_risk(env: &Env, amount: i128, trader: &Address) {
+        let rm: Address = env.storage().instance().get(&DataKey::RiskManager).unwrap();
+        env.invoke_contract::<()>(
+            &rm,
+            &Symbol::new(env, "check_limits"),
+            (amount, trader.clone()).into_val(env),
+        );
     }
 }
 
