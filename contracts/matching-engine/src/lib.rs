@@ -210,19 +210,82 @@ impl MatchingEngine {
         Ok(order_id)
     }
 
-    /// Cancel an existing order. Only the trader who placed the order may cancel.
-    pub fn cancel_order(env: Env, _order_id: u64, caller: Address) -> Result<(), Error> {
-        caller.require_auth();
+    /// Cancel an open (or partially filled) order. Only the trader who placed the
+    /// order may cancel it. The order is marked `Cancelled` and its remaining
+    /// quantity is removed from the resting price level so it can no longer match.
+    pub fn cancel_order(
+        env: Env,
+        asset: Address,
+        quote: Address,
+        order_id: u64,
+        caller: Address,
+    ) -> Result<(), Error> {
         Self::ensure_init(&env)?;
+        caller.require_auth();
 
-        // Find the order in all order books (simplified - in production we'd have a global order index)
-        // For this implementation, we'll scan through all markets to find the order
-        // In a real implementation, you'd maintain a global mapping from order_id to market
+        let market_key = (asset.clone(), quote.clone());
+        let mut order_book: MarketOrderBook = env
+            .storage()
+            .persistent()
+            .get(&DataKey::OrderBook(market_key.clone()))
+            .ok_or(Error::MarketNotFound)?;
 
-        // For demo purposes, we'll assume we can find and update the order
-        // This is a simplification - production would have better indexing
+        // Locate the order and verify ownership + state.
+        let mut target: Option<Order> = None;
+        let mut order_index: u32 = 0;
+        for (i, o) in order_book.all_orders.iter().enumerate() {
+            if o.id == order_id {
+                target = Some(o);
+                order_index = i as u32;
+                break;
+            }
+        }
+        let mut order = target.ok_or(Error::OrderNotFound)?;
+        if order.trader != caller {
+            return Err(Error::NotAuthorized);
+        }
+        if order.status != OrderStatus::Open && order.status != OrderStatus::PartiallyFilled {
+            return Err(Error::OrderNotOpen);
+        }
 
-        Err(Error::OrderNotFound)
+        // Remove the order's remaining quantity from its resting price level.
+        let remaining = order.quantity - order.filled;
+        let levels = if order.side == OrderSide::Buy {
+            &mut order_book.bids
+        } else {
+            &mut order_book.asks
+        };
+        for i in 0..levels.len() {
+            let mut level = levels.get(i).unwrap();
+            if level.price == order.price {
+                let mut new_ids = Vec::new(&env);
+                for id in level.order_ids.iter() {
+                    if id != order_id {
+                        new_ids.push_back(id);
+                    }
+                }
+                level.order_ids = new_ids;
+                level.total_quantity -= remaining;
+                if level.order_ids.is_empty() {
+                    levels.remove(i);
+                } else {
+                    levels.set(i, level);
+                }
+                break;
+            }
+        }
+
+        // Mark the order cancelled in the flat order list.
+        order.status = OrderStatus::Cancelled;
+        order_book.all_orders.set(order_index, order);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::OrderBook(market_key), &order_book);
+
+        env.events().publish((EVT_ORDER_CANCEL, order_id), caller);
+
+        Ok(())
     }
 
     /// Batch match orders for a specific market. This is the main matching function
@@ -329,7 +392,7 @@ impl MatchingEngine {
         order_book: &mut MarketOrderBook,
         order: Order,
     ) -> Result<(), Error> {
-        let mut price_levels = if order.side == OrderSide::Buy {
+        let price_levels = if order.side == OrderSide::Buy {
             &mut order_book.bids
         } else {
             &mut order_book.asks
@@ -337,8 +400,7 @@ impl MatchingEngine {
 
         // Find if there's an existing price level for this price
         let mut found = false;
-        let mut level_index: usize = 0;
-        for level in price_levels.iter() {
+        for (level_index, level) in price_levels.iter().enumerate() {
             if level.price == order.price {
                 // Get mutable access by removing and reinserting (simplified for Soroban Vec)
                 let mut mut_level = level.clone();
@@ -348,7 +410,6 @@ impl MatchingEngine {
                 found = true;
                 break;
             }
-            level_index += 1;
         }
 
         // If no existing price level, create a new one and insert in the correct position
@@ -366,7 +427,7 @@ impl MatchingEngine {
             // Insert in the correct position to maintain sorting without using sort_by
             if order.side == OrderSide::Buy {
                 // Bids sorted descending - find first price lower than new price and insert before
-                let mut insert_at = price_levels.len() as u32;
+                let mut insert_at = price_levels.len();
                 for (i, level) in price_levels.iter().enumerate() {
                     if level.price < new_level.price {
                         insert_at = i as u32;
@@ -376,7 +437,7 @@ impl MatchingEngine {
                 price_levels.insert(insert_at, new_level);
             } else {
                 // Asks sorted ascending - find first price higher than new price and insert before
-                let mut insert_at = price_levels.len() as u32;
+                let mut insert_at = price_levels.len();
                 for (i, level) in price_levels.iter().enumerate() {
                     if level.price > new_level.price {
                         insert_at = i as u32;
@@ -474,8 +535,8 @@ impl MatchingEngine {
                 timestamp: env.ledger().timestamp(),
             };
 
-            // Call the settlement hook
-            Self::settle_trade_hook(env, &trade)?;
+            // Publish the authoritative trade record for the settlement layer.
+            Self::record_trade_execution(env, &trade);
 
             // Update order filled quantities
             bid_order.filled += matched_quantity;
@@ -557,14 +618,16 @@ impl MatchingEngine {
 }
 
 impl MatchingEngine {
-    /// Hook called to settle a trade atomically. Can be overridden or extended
-    /// to integrate with external settlement systems.
-    fn settle_trade_hook(env: &Env, trade: &Trade) -> Result<(), Error> {
-        // This is a placeholder for atomic settlement logic
-        // In a production implementation, this would interact with escrow,
-        // transfer tokens, and perform any other required settlement steps
-
-        // Emit the trade executed event
+    /// Records a matched trade and emits the authoritative `EVT_TRADE_EXECUTED`
+    /// event that the settlement layer consumes to move funds.
+    ///
+    /// The matching engine deliberately does not move tokens itself: it matches
+    /// orders and publishes an unambiguous trade record (price, quantity, both
+    /// counterparties), while the `trade-settlement` contract in this workspace
+    /// performs the atomic `token::Client` transfers that settle it. Keeping
+    /// matching and settlement separate keeps the match logic stateless with
+    /// respect to balances and lets settlement batch/net trades.
+    fn record_trade_execution(env: &Env, trade: &Trade) {
         env.events().publish(
             (EVT_TRADE_EXECUTED, trade.id),
             (
@@ -574,8 +637,6 @@ impl MatchingEngine {
                 trade.quantity,
             ),
         );
-
-        Ok(())
     }
 }
 
