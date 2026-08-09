@@ -69,14 +69,9 @@ fn open_and_get_trade() {
 #[test]
 fn open_invalid_amount_fails() {
     let f = setup();
-    let res = f.client.try_open(
-        &f.buyer,
-        &f.seller,
-        &f.base_asset,
-        &f.quote_asset,
-        &-1,
-        &10,
-    );
+    let res = f
+        .client
+        .try_open(&f.buyer, &f.seller, &f.base_asset, &f.quote_asset, &-1, &10);
     assert_eq!(res, Err(Ok(Error::InvalidAmount)));
 }
 
