@@ -96,6 +96,7 @@ const EVT_COLLATERAL_WITHDRAWN: Symbol = symbol_short!("collwth");
 const EVT_POSITION_OPENED: Symbol = symbol_short!("posopen");
 const EVT_POSITION_CLOSED: Symbol = symbol_short!("posclsd");
 const EVT_LIQUIDATION_TRIGGERED: Symbol = symbol_short!("liq");
+const EVT_MARK_PRICE_UPDATED: Symbol = symbol_short!("markprice");
 
 #[contract]
 pub struct MarginingLiquidation;
@@ -441,6 +442,39 @@ impl MarginingLiquidation {
             .publish((EVT_LIQUIDATION_TRIGGERED, user, liquidator), incentive);
 
         Ok(incentive)
+    }
+
+    /// Update the mark price of a position. Only the configured price oracle may
+    /// push new mark prices. Mark-price movement is what drives unrealized P&L and,
+    /// in turn, whether a position becomes eligible for liquidation.
+    pub fn update_mark_price(
+        env: Env,
+        caller: Address,
+        position_id: u64,
+        new_mark_price: i128,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+        let config = Self::ensure_init(&env)?;
+        if caller != config.price_oracle {
+            return Err(Error::Unauthorized);
+        }
+        if new_mark_price <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let mut position = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Position>(&DataKey::Position(position_id))
+            .ok_or(Error::PositionNotFound)?;
+        position.mark_price = new_mark_price;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Position(position_id), &position);
+
+        env.events()
+            .publish((EVT_MARK_PRICE_UPDATED, position_id), new_mark_price);
+        Ok(())
     }
 
     /// Fetch a margin account by user address.
