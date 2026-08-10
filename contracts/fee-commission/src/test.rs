@@ -19,7 +19,7 @@ fn create_token<'a>(
 }
 
 fn setup(env: &Env) -> (FeeCommissionClient<'_>, Address) {
-    let contract_id = env.register_contract(None, FeeCommission);
+    let contract_id = env.register(FeeCommission, ());
     let client = FeeCommissionClient::new(env, &contract_id);
     let admin = Address::generate(env);
     let treasury = Address::generate(env);
@@ -56,7 +56,7 @@ fn test_initialize_twice_fails() {
 fn test_initialize_rejects_excessive_fee() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, FeeCommission);
+    let contract_id = env.register(FeeCommission, ());
     let client = FeeCommissionClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let treasury = Address::generate(&env);
@@ -143,7 +143,7 @@ fn test_collect_fee_exempt_no_transfer() {
 fn test_distribute_fee_splits_treasury_and_recipients() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, FeeCommission);
+    let contract_id = env.register(FeeCommission, ());
     let client = FeeCommissionClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
@@ -190,7 +190,7 @@ fn test_distribute_fee_splits_treasury_and_recipients() {
 fn test_distribute_fee_dust_goes_to_treasury() {
     let env = Env::default();
     env.mock_all_auths();
-    let contract_id = env.register_contract(None, FeeCommission);
+    let contract_id = env.register(FeeCommission, ());
     let client = FeeCommissionClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);

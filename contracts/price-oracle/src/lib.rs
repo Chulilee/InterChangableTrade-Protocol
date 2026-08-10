@@ -7,7 +7,8 @@
 //! to secondary sources. Protects against price manipulation and stale data.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal,
+    Symbol,
 };
 
 /// Enum representing a price source type
@@ -91,19 +92,17 @@ pub enum DataKey {
     ActiveSource,
 }
 
-/// Event symbols
-const EVT_ORACLE_UPDATED: Symbol = symbol_short!("oracle_upd");
-const EVT_ORACLE_SOURCE_CHANGED: Symbol = symbol_short!("oracle_srcchg");
-const EVT_ORACLE_ALERT: Symbol = symbol_short!("oracle_alert");
+/// Event symbols (max 9 chars for `symbol_short!`).
+const EVT_ORACLE_UPDATED: Symbol = symbol_short!("orc_upd");
+const EVT_ORACLE_SOURCE_CHANGED: Symbol = symbol_short!("orc_src");
 
-/// Predefined roles from access-control pattern
+/// Predefined roles from access-control pattern.
 const ROLE_ADMIN: Symbol = symbol_short!("ADMIN");
 const ROLE_OPERATOR: Symbol = symbol_short!("OPERATOR");
 
 #[contract]
 pub struct PriceOracle;
 
-#[contractclient("price-oracle")]
 #[contractimpl]
 impl PriceOracle {
     /// Initialize the price oracle with an access control contract and base configuration.
@@ -118,7 +117,9 @@ impl PriceOracle {
             return Err(Error::AlreadyInitialized);
         }
 
-        env.storage().instance().set(&DataKey::AccessControl, &access_control);
+        env.storage()
+            .instance()
+            .set(&DataKey::AccessControl, &access_control);
 
         let config = OracleConfig {
             max_deviation_bps,
@@ -133,10 +134,11 @@ impl PriceOracle {
     /// Set or update an oracle source (primary or secondary). Requires admin authorization.
     pub fn set_oracle_source(
         env: Env,
+        caller: Address,
         source_type: OracleSourceType,
         address: Address,
     ) -> Result<(), Error> {
-        Self::require_role(&env, ROLE_ADMIN)?;
+        Self::require_role(&env, &caller, ROLE_ADMIN)?;
 
         let source = OracleSource {
             address: address.clone(),
@@ -150,7 +152,9 @@ impl PriceOracle {
 
         // If this is the first source, set it as active
         if !env.storage().instance().has(&DataKey::ActiveSource) {
-            env.storage().instance().set(&DataKey::ActiveSource, &source_type);
+            env.storage()
+                .instance()
+                .set(&DataKey::ActiveSource, &source_type);
         }
 
         env.events()
@@ -161,10 +165,11 @@ impl PriceOracle {
     /// Update price for an asset. Only callable by authorized operators.
     pub fn update_price(
         env: Env,
+        caller: Address,
         asset: Address,
         new_price: i128,
     ) -> Result<(), Error> {
-        Self::require_role(&env, ROLE_OPERATOR)?;
+        Self::require_role(&env, &caller, ROLE_OPERATOR)?;
 
         let config: OracleConfig = env
             .storage()
@@ -172,33 +177,28 @@ impl PriceOracle {
             .get(&DataKey::Config)
             .ok_or(Error::NotInitialized)?;
 
-        // Get current price if exists to check deviation
-        let current_price_data: Option<PriceData> = env.storage().persistent().get(&DataKey::Price(asset.clone()));
-        
-        if let Some(current) = current_price_data {
-            // Calculate price deviation
-            let price_diff = (new_price - current.price).abs();
-            let deviation_bps = (price_diff as u128 * 10000) / current.price.abs() as u128;
-            
+        // Get current price if it exists, to check deviation and roll the TWAP.
+        let current_price_data: Option<PriceData> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Price(asset.clone()));
+
+        let (new_twap, new_observations) = if let Some(current) = current_price_data {
+            // Reject a move larger than the configured deviation outright. A
+            // single anomalous tick never mutates oracle state, so it cannot be
+            // weaponized to force a failover.
+            let price_diff = (new_price - current.price).unsigned_abs();
+            let deviation_bps = (price_diff * 10000) / current.price.unsigned_abs();
             if deviation_bps > config.max_deviation_bps as u128 {
-                // Trigger fallback to secondary source if primary failed validation
-                Self::handle_fallback(&env, asset.clone(), "Price deviation exceeded")?;
                 return Err(Error::PriceDeviationExceeded);
             }
-        }
 
-        // Calculate new TWAP
-        let new_twap = if let Some(current) = current_price_data {
-            // Simple TWAP calculation: weighted average based on observations
-            ((current.twap * current.observations as i128) + new_price) / (current.observations + 1) as i128
+            // Simple observation-weighted average.
+            let twap = ((current.twap * current.observations as i128) + new_price)
+                / (current.observations + 1) as i128;
+            (twap, current.observations + 1)
         } else {
-            new_price
-        };
-
-        let new_observations = if let Some(current) = current_price_data {
-            current.observations + 1
-        } else {
-            1
+            (new_price, 1)
         };
 
         let price_data = PriceData {
@@ -219,18 +219,19 @@ impl PriceOracle {
             .instance()
             .get(&DataKey::ActiveSource)
             .ok_or(Error::NoActiveSources)?;
-            
+
         let mut active_source: OracleSource = env
             .storage()
             .persistent()
-            .get(&DataKey::Source(active_source_type))
+            .get(&DataKey::Source(active_source_type.clone()))
             .ok_or(Error::NoActiveSources)?;
         active_source.last_updated = env.ledger().timestamp();
         env.storage()
             .persistent()
             .set(&DataKey::Source(active_source_type), &active_source);
 
-        env.events().publish((EVT_ORACLE_UPDATED, asset), (new_price, new_twap));
+        env.events()
+            .publish((EVT_ORACLE_UPDATED, asset), (new_price, new_twap));
         Ok(())
     }
 
@@ -239,7 +240,7 @@ impl PriceOracle {
         let price_data: PriceData = env
             .storage()
             .persistent()
-            .get(&DataKey::Price(asset))
+            .get(&DataKey::Price(asset.clone()))
             .ok_or(Error::AssetNotFound)?;
 
         let config: OracleConfig = env
@@ -250,8 +251,9 @@ impl PriceOracle {
 
         let current_timestamp = env.ledger().timestamp();
         if current_timestamp - price_data.timestamp > config.freshness_threshold {
-            // Price is stale, try to use fallback
-            Self::handle_fallback(&env, asset.clone(), "Price data is stale")?;
+            // Stale data is never served. Recovery is an explicit privileged
+            // failover via `set_active_source`, not an implicit read-time switch
+            // (which could not persist through this error return anyway).
             return Err(Error::PriceStale);
         }
 
@@ -263,63 +265,57 @@ impl PriceOracle {
         })
     }
 
-    /// Switch to the secondary oracle source as the active source.
-    fn switch_to_secondary(env: &Env) -> Result<(), Error> {
-        let secondary_source: Option<OracleSource> = env
+    /// Explicitly promote a configured source (typically the secondary) to be
+    /// the active one. This is the sanctioned recovery path when the active
+    /// feed is producing stale or anomalous data: because it returns `Ok`, the
+    /// switch is committed rather than rolled back with a rejecting read/update.
+    /// Requires admin authorization.
+    pub fn set_active_source(
+        env: Env,
+        caller: Address,
+        source_type: OracleSourceType,
+    ) -> Result<(), Error> {
+        Self::require_role(&env, &caller, ROLE_ADMIN)?;
+
+        let mut source: OracleSource = env
             .storage()
             .persistent()
-            .get(&DataKey::Source(OracleSourceType::Secondary));
-
-        if let Some(mut secondary) = secondary_source {
-            if secondary.active {
-                env.storage().instance().set(&DataKey::ActiveSource, &OracleSourceType::Secondary);
-                secondary.last_updated = env.ledger().timestamp();
-                env.storage()
-                    .persistent()
-                    .set(&DataKey::Source(OracleSourceType::Secondary), &secondary);
-                
-                env.events().publish(
-                    (EVT_ORACLE_SOURCE_CHANGED, OracleSourceType::Secondary, secondary.address),
-                    ()
-                );
-                Ok(())
-            } else {
-                Err(Error::NoActiveSources)
-            }
-        } else {
-            Err(Error::NoActiveSources)
+            .get(&DataKey::Source(source_type.clone()))
+            .ok_or(Error::InvalidSource)?;
+        if !source.active {
+            return Err(Error::InvalidSource);
         }
-    }
 
-    /// Handle fallback logic when primary source fails validation.
-    fn handle_fallback(env: &Env, asset: Address, reason: &str) -> Result<(), Error> {
-        // Emit alert event
-        let reason_symbol = Symbol::from_str(reason);
-        env.events().publish((EVT_ORACLE_ALERT, asset, reason_symbol), ());
-        
-        // Try to switch to secondary source
-        Self::switch_to_secondary(env)
+        env.storage()
+            .instance()
+            .set(&DataKey::ActiveSource, &source_type);
+        source.last_updated = env.ledger().timestamp();
+        env.storage()
+            .persistent()
+            .set(&DataKey::Source(source_type.clone()), &source);
+
+        env.events()
+            .publish((EVT_ORACLE_SOURCE_CHANGED, source_type, source.address), ());
+        Ok(())
     }
 
     /// Internal helper to check caller authorization using the access-control contract.
-    fn require_role(env: &Env, required_role: Symbol) -> Result<(), Error> {
+    fn require_role(env: &Env, caller: &Address, required_role: Symbol) -> Result<(), Error> {
         let access_control: Address = env
             .storage()
             .instance()
             .get(&DataKey::AccessControl)
             .ok_or(Error::NotInitialized)?;
-            
-        let caller = env.invoker();
+
         caller.require_auth();
-        
-        // Call the access-control contract to check if the caller has the required role
-        let has_role: bool = env
-            .invoke_contract(
-                &access_control,
-                Symbol::new("has_role"),
-                (&required_role, caller.clone()),
-            );
-            
+
+        // Call the access-control contract to check if the caller has the role.
+        let has_role: bool = env.invoke_contract(
+            &access_control,
+            &Symbol::new(env, "has_role"),
+            (required_role, caller.clone()).into_val(env),
+        );
+
         if !has_role {
             return Err(Error::Unauthorized);
         }

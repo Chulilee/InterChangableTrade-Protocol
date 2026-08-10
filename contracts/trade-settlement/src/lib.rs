@@ -207,7 +207,8 @@ impl TradeSettlement {
         let mut trades = Vec::new(&env);
         for id in trade_ids.iter() {
             let trade = Self::get(env.clone(), id)?;
-            if trade.status != SettlementStatus::Pending && trade.status != SettlementStatus::Failed {
+            if trade.status != SettlementStatus::Pending && trade.status != SettlementStatus::Failed
+            {
                 return Err(Error::NotPending);
             }
             trades.push_back(trade);
@@ -230,7 +231,9 @@ impl TradeSettlement {
                 for mut trade in trades.iter() {
                     trade.status = SettlementStatus::Failed;
                     trade.failure_reason = Some(reason.clone());
-                    env.storage().persistent().set(&DataKey::Trade(trade.id), &trade);
+                    env.storage()
+                        .persistent()
+                        .set(&DataKey::Trade(trade.id), &trade);
                 }
 
                 env.events().publish(
@@ -252,7 +255,9 @@ impl TradeSettlement {
         for mut trade in trades.iter() {
             trade.status = SettlementStatus::Settled;
             trade.failure_reason = None;
-            env.storage().persistent().set(&DataKey::Trade(trade.id), &trade);
+            env.storage()
+                .persistent()
+                .set(&DataKey::Trade(trade.id), &trade);
         }
 
         let result = BatchSettlementResult {
@@ -293,7 +298,9 @@ impl TradeSettlement {
             let trade = Self::get(env.clone(), id)?;
             trades.push_back(trade);
         }
-        Ok(netting::NettingEngine::compute_net_obligations(&env, &trades))
+        Ok(netting::NettingEngine::compute_net_obligations(
+            &env, &trades,
+        ))
     }
 
     /// Cancel a pending trade. Either counterparty may cancel.

@@ -11,7 +11,11 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
-risk-management = { path = "../risk-management" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Only needed by tests, to deploy a RiskManager the marketplace calls into.
+# The contract itself invokes risk-management by address (env.invoke_contract),
+# so it must NOT be a normal dependency (that would link risk-management's
+# exports into the marketplace WASM and collide on `initialize`).
+risk-management = { path = "../risk-management" }
