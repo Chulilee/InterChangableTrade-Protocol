@@ -8,7 +8,7 @@ struct Fixture {
     client: OrderbookContractClient<'static>,
     owner: Address,
 }
-
+// Set up the test fixture with a default environment and contract instance.
 fn setup() -> Fixture {
     let env = Env::default();
     env.mock_all_auths();
@@ -17,7 +17,7 @@ fn setup() -> Fixture {
     let owner = Address::generate(&env);
     Fixture { env, client, owner }
 }
-
+// Test cases for the OrderbookContract.
 #[test]
 fn place_order_assigns_incrementing_ids() {
     let f = setup();
@@ -26,7 +26,7 @@ fn place_order_assigns_incrementing_ids() {
     assert_eq!(id0, 0);
     assert_eq!(id1, 1);
 }
-
+// Test that placing an order stores the order correctly in the contract's state.
 #[test]
 fn place_order_stores_new_order() {
     let f = setup();
@@ -39,13 +39,13 @@ fn place_order_stores_new_order() {
     assert!(order.status == OrderStatus::New);
     assert!(order.side == OrderSide::Buy);
 }
-
+// Test that getting an order by ID returns None for a non-existent order.
 #[test]
 fn get_order_by_id_returns_none_for_missing() {
     let f = setup();
     assert!(f.client.get_order_by_id(&999).is_none());
 }
-
+// Test that listing orders by owner returns only the orders belonging to that owner.
 #[test]
 fn list_orders_by_owner_filters_by_owner() {
     let f = setup();
@@ -63,7 +63,7 @@ fn list_orders_by_owner_filters_by_owner() {
     let theirs = f.client.list_orders_by_owner(&other);
     assert_eq!(theirs.len(), 1);
 }
-
+// Test that cancelling an order marks its status as Cancelled.
 #[test]
 fn cancel_order_marks_cancelled() {
     let f = setup();
@@ -72,13 +72,13 @@ fn cancel_order_marks_cancelled() {
     let order = f.client.get_order_by_id(&id).unwrap();
     assert!(order.status == OrderStatus::Cancelled);
 }
-
+// Test that cancelling a non-existent order fails.
 #[test]
 fn cancel_missing_order_fails() {
     let f = setup();
     assert!(f.client.try_cancel_order(&f.owner, &999).is_err());
 }
-
+// Test that cancelling an order by a non-owner fails.
 #[test]
 fn cancel_by_non_owner_fails() {
     let f = setup();
