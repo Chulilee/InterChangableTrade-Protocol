@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec, token};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
@@ -36,6 +36,8 @@ pub struct BridgeState {
     pub is_paused: bool,
     pub validator_count: u32,
     pub required_attestations: u32,
+    pub fee: i128,
+    pub fee_address: Address,
 }
 
 #[contract]
@@ -48,6 +50,8 @@ impl CrossChainBridge {
         admin: Address,
         validators: Vec<Address>,
         required_attestations: u32,
+        fee: i128,
+        fee_address: Address,
     ) {
         if env.storage().instance().has(&DataKey::State) {
             panic!("Bridge is already initialized");
@@ -65,6 +69,8 @@ impl CrossChainBridge {
             is_paused: false,
             validator_count,
             required_attestations,
+            fee,
+            fee_address,
         };
 
         env.storage().instance().set(&DataKey::State, &state);
@@ -87,7 +93,6 @@ impl CrossChainBridge {
         state.is_paused = true;
         env.storage().instance().set(&DataKey::State, &state);
     }
-}
 
     pub fn unpause_bridge(env: Env) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
@@ -96,6 +101,15 @@ impl CrossChainBridge {
         let mut state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
         state.is_paused = false;
         env.storage().instance().set(&DataKey::State, &state);
+    }
+
+    pub fn register_asset(env: Env, asset: Address, wrapped_asset: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::AssetToWrapped(asset), &wrapped_asset);
     }
 
     pub fn lock_asset(
@@ -113,12 +127,20 @@ impl CrossChainBridge {
             panic!("Bridge is currently paused");
         }
 
+        let fee_token_client = token::Client::new(&env, &asset);
+        fee_token_client.transfer(&user, &state.fee_address, &state.fee);
+
+        let amount_after_fee = amount - state.fee;
+
+        let token_client = token::Client::new(&env, &asset);
+        token_client.transfer(&user, &env.current_contract_address(), &amount_after_fee);
+
         let transaction_id = state.next_transaction_id;
         let transaction = CrossChainTransaction {
             id: transaction_id,
             user,
             asset,
-            amount,
+            amount: amount_after_fee,
             to_chain,
             to_address,
             status: TransactionStatus::Pending,
@@ -132,7 +154,10 @@ impl CrossChainBridge {
         state.next_transaction_id += 1;
         env.storage().instance().set(&DataKey::State, &state);
 
-        // TODO: Emit an event to notify validators
+        env.events().publish(
+            (String::from_str(&env, "lock_asset"), transaction.user.clone()),
+            (transaction.id, transaction.amount),
+        );
     }
 
     pub fn attest_transaction(env: Env, validator: Address, transaction_id: u64) {
@@ -159,7 +184,20 @@ impl CrossChainBridge {
 
         if transaction.attestations.len() >= state.required_attestations {
             transaction.status = TransactionStatus::Completed;
-            // TODO: Mint wrapped tokens on the destination chain
+
+            let wrapped_asset = env
+                .storage()
+                .instance()
+                .get(&DataKey::AssetToWrapped(transaction.asset.clone()))
+                .unwrap();
+
+            let token_client = token::Client::new(&env, &wrapped_asset);
+            token_client.mint(&transaction.user, &transaction.amount);
+
+            env.events().publish(
+                (String::from_str(&env, "transaction_completed"), transaction.user.clone()),
+                (transaction.id, transaction.amount),
+            );
         }
 
         env.storage()
@@ -207,6 +245,37 @@ impl CrossChainBridge {
         env.storage().instance().set(&DataKey::Validators, &validators);
         env.storage().instance().set(&DataKey::State, &state);
     }
+
+    pub fn emergency_withdraw(env: Env, user: Address, transaction_id: u64) {
+        user.require_auth();
+
+        let mut transaction: CrossChainTransaction = env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(transaction_id))
+            .unwrap();
+
+        if transaction.user != user {
+            panic!("Not the transaction owner");
+        }
+
+        if transaction.status != TransactionStatus::Pending {
+            panic!("Transaction is not in a pending state");
+        }
+
+        transaction.status = TransactionStatus::Cancelled;
+
+        let token_client = token::Client::new(&env, &transaction.asset);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &user,
+            &transaction.amount,
+        );
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Transaction(transaction_id), &transaction);
+    }
 }
 
 #[contracttype]
@@ -215,4 +284,5 @@ pub enum DataKey {
     Validators,
     Transaction(u64),
     Admin,
+    AssetToWrapped(Address),
 }
