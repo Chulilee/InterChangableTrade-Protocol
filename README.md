@@ -8,7 +8,7 @@ InterChangableTrade-Protocol contains the on-chain logic for the InterChangableT
 
 ## Contracts
 
-The workspace contains 13 composable Soroban contracts under `contracts/`:
+The workspace contains 14 composable Soroban contracts under `contracts/`:
 
 | Contract | Responsibility |
 |----------|----------------|
@@ -24,6 +24,7 @@ The workspace contains 13 composable Soroban contracts under `contracts/`:
 | `orderbook` | On-chain order book storage with bid/ask price levels. |
 | `price-oracle` | Publishes and serves mark prices used for margin and settlement. |
 | `risk-management` | Market pause switch, per-order size limits, and cumulative exposure checks. |
+| `trade-matching` | Tag/category/value-range listing matching with ranked suggestions and propose/accept workflow. |
 | `trade-settlement` | Atomic, retryable settlement with position netting across a batch of trades. |
 
 ## Technology Stack
