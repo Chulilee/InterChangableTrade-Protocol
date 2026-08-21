@@ -21,6 +21,7 @@ built and deployed on its own.
 | `orderbook` | On-chain order book storage with bid/ask price levels. |
 | `price-oracle` | Publishes and serves mark prices consumed by margining and settlement. |
 | `risk-management` | Market pause switch, per-order size limits, and cumulative exposure checks. |
+| `trade-matching` | Tag/category/value-range listing matching with ranked suggestions and propose/accept workflow. |
 | `trade-settlement` | Atomic, retryable settlement with position netting across a batch of trades. |
 
 ## How value moves
