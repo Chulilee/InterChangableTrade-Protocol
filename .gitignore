@@ -8,6 +8,10 @@
 .stellar/
 test_snapshots/
 
+# Node / frontend
+node_modules/
+dist/
+
 # Editor / OS
 .DS_Store
 *.swp
