@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/solid-js';
+import { renderHook } from '@solidjs/testing-library';
 import { AuthProvider, useAuth } from '../AuthContext';
 import { createSignal } from 'solid-js';
 
@@ -18,9 +18,10 @@ describe('AuthContext', () => {
       wrapper: AuthProvider
     });
     
-    expect(result.current.state.isAuthenticated).toBe(false);
-    expect(result.current.state.user).toBeNull();
-    expect(result.current.state.isLoading).toBe(true);
+    expect(result.state.isAuthenticated).toBe(false);
+    expect(result.state.user).toBeNull();
+    // With no stored tokens, the init effect resolves synchronously to isLoading: false.
+    expect(result.state.isLoading).toBe(false);
   });
 
   it('stores tokens in localStorage on successful login', async () => {
@@ -45,13 +46,11 @@ describe('AuthContext', () => {
       wrapper: AuthProvider
     });
 
-    await act(async () => {
-      await result.current.signIn('test@example.com', 'password123');
-    });
+    await result.signIn('test@example.com', 'password123');
 
     // Check if state updated
-    expect(result.current.state.isAuthenticated).toBe(true);
-    expect(result.current.state.user).toEqual(mockUser);
+    expect(result.state.isAuthenticated).toBe(true);
+    expect(result.state.user).toEqual(mockUser);
     
     // Check if tokens are stored
     const storedTokens = localStorage.getItem('auth_tokens');
@@ -90,19 +89,15 @@ describe('AuthContext', () => {
       wrapper: AuthProvider
     });
 
-    await act(async () => {
-      await result.current.signIn('test@example.com', 'password123');
-    });
+    await result.signIn('test@example.com', 'password123');
 
     expect(localStorage.getItem('auth_tokens')).toBeTruthy();
 
-    await act(async () => {
-      await result.current.signOut();
-    });
+    await result.signOut();
 
     expect(localStorage.getItem('auth_tokens')).toBeNull();
-    expect(result.current.state.isAuthenticated).toBe(false);
-    expect(result.current.state.user).toBeNull();
+    expect(result.state.isAuthenticated).toBe(false);
+    expect(result.state.user).toBeNull();
   });
 
   it('validates email format in signin', async () => {
