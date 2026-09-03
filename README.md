@@ -57,7 +57,13 @@ cargo test --workspace
 # Build the deployable WASM for one contract
 cargo build -p escrow --target wasm32-unknown-unknown --release
 ```
+## Related Repositories
 
+- **[InterChangableTrade-Core](https://github.com/Chulilee/InterChangableTrade-Core)** 
+  Soroban smart contracts (access-control, escrow, marketplace, etc.)
+- **[InterChangableTrade-Fricks](https://github.com/Chulilee/InterChangableTrade-Fricks)** 
+
+  
 ## Contributing
 
 Contributions, security reviews, and audits are highly encouraged. See
