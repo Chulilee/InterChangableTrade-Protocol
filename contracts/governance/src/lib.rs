@@ -1,8 +1,7 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
-};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,12 +65,8 @@ pub enum Error {
     Cancelled = 10,
     InvalidThreshold = 11,
     InvalidQuorum = 12,
+    NotQueued = 13,
 }
-
-const EVT_PROPOSAL_CREATED: Symbol = symbol_short!("prop_crtd");
-const EVT_VOTE_CAST: Symbol = symbol_short!("vote_cast");
-const EVT_PROPOSAL_QUEUED: Symbol = symbol_short!("prop_qd");
-const EVT_PROPOSAL_EXECUTED: Symbol = symbol_short!("prop_exec");
 
 #[contract]
 pub struct Governance;
@@ -161,7 +156,7 @@ impl Governance {
         weight: u128,
     ) -> Result<(), Error> {
         voter.require_auth();
-        let mut metadata = Self::get_metadata(&env, proposal_id)?;
+        let metadata = Self::get_metadata(&env, proposal_id)?;
         if metadata.canceled {
             return Err(Error::Cancelled);
         }
@@ -180,10 +175,10 @@ impl Governance {
             .persistent()
             .get(&votes_key)
             .unwrap_or(Vec::new(&env));
-        let existing = Self::find_vote(&env, &votes, voter.clone());
+        let existing = Self::find_vote(&votes, voter.clone());
         if let Some(index) = existing {
             let record = votes.get(index).unwrap();
-            votes.remove(index as u32);
+            votes.remove(index);
             if record.support != support || record.weight != weight {
                 votes.push_back(VoteRecord {
                     voter: voter.clone(),
@@ -208,7 +203,7 @@ impl Governance {
 
     pub fn queue_execution(env: Env, proposal_id: u64, caller: Address) -> Result<(), Error> {
         caller.require_auth();
-        let mut metadata = Self::get_metadata(&env, proposal_id)?;
+        let metadata = Self::get_metadata(&env, proposal_id)?;
         if metadata.canceled {
             return Err(Error::Cancelled);
         }
@@ -224,10 +219,10 @@ impl Governance {
         if queued {
             return Err(Error::AlreadyQueued);
         }
+        // Queuing only requires the proposal to have succeeded (voting has
+        // already ended, since `finalize` sets `Succeeded` only after
+        // `end_time`). The timelock is enforced later, at execution.
         let now = env.ledger().timestamp();
-        if now < metadata.end_time + metadata.timelock {
-            return Err(Error::TimelockNotElapsed);
-        }
         env.storage()
             .persistent()
             .set(&DataKey::ProposalQueue(proposal_id), &true);
@@ -240,7 +235,7 @@ impl Governance {
 
     pub fn execute_proposal(env: Env, proposal_id: u64, caller: Address) -> Result<(), Error> {
         caller.require_auth();
-        let mut metadata = Self::get_metadata(&env, proposal_id)?;
+        let metadata = Self::get_metadata(&env, proposal_id)?;
         if metadata.canceled {
             return Err(Error::Cancelled);
         }
@@ -254,7 +249,7 @@ impl Governance {
             .get(&DataKey::ProposalQueue(proposal_id))
             .unwrap_or(false);
         if !queued {
-            return Err(Error::AlreadyQueued);
+            return Err(Error::NotQueued);
         }
         let now = env.ledger().timestamp();
         if now < metadata.end_time + metadata.timelock {
@@ -324,8 +319,7 @@ impl Governance {
         let votes = Self::get_votes_internal(&env, proposal_id)?;
         let mut yes_weight = 0u128;
         let mut no_weight = 0u128;
-        for i in 0..votes.len() {
-            let record = votes.get(i as u32).unwrap();
+        for record in votes.iter() {
             if record.support {
                 yes_weight += record.weight;
             } else {
@@ -378,14 +372,11 @@ impl Governance {
             .ok_or(Error::ProposalNotFound)
     }
 
-    fn find_vote(env: &Env, votes: &Vec<VoteRecord>, voter: Address) -> Option<u32> {
-        let mut idx = 0u32;
-        for i in 0..votes.len() {
-            let record = votes.get(i as u32).unwrap();
+    fn find_vote(votes: &Vec<VoteRecord>, voter: Address) -> Option<u32> {
+        for (i, record) in votes.iter().enumerate() {
             if record.voter == voter {
-                return Some(idx);
+                return Some(i as u32);
             }
-            idx += 1;
         }
         None
     }

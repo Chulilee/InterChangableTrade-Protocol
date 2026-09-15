@@ -1,15 +1,7 @@
+#![no_std]
 #![deny(warnings)]
 
-use soroban_sdk::{
-    contract,
-    contractimpl,
-    contracttype,
-    symbol_short,
-    Address,
-    Env,
-    Symbol,
-    Vec,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[contracttype]
@@ -18,6 +10,7 @@ pub enum OrderSide {
     Sell,
 }
 
+// OrderStatus represents the status of an order in the order book.
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[contracttype]
 pub enum OrderStatus {
@@ -26,6 +19,7 @@ pub enum OrderStatus {
     Cancelled,
 }
 
+// Order represents an order in the order book.
 #[derive(Clone)]
 #[contracttype]
 pub struct Order {
@@ -42,6 +36,7 @@ pub struct Order {
 const ORDERS: Symbol = symbol_short!("ORDERS");
 const NEXT_ID: Symbol = symbol_short!("NEXT_ID");
 
+// OrderbookContract is a simple order book contract that allows users to place, cancel, and update orders. It also provides functionality to retrieve orders by ID or by owner, as well as to get the best bid and ask prices in the order book.
 #[contract]
 pub struct OrderbookContract;
 
@@ -57,7 +52,7 @@ impl OrderbookContract {
         owner.require_auth();
 
         let mut orders = Self::get_orders(env.clone());
-        let mut next_id = Self::get_next_id(env.clone());
+        let next_id = Self::get_next_id(env.clone());
 
         let order = Order {
             id: next_id,
@@ -76,7 +71,13 @@ impl OrderbookContract {
 
         env.events().publish(
             (symbol_short!("order"), symbol_short!("placed")),
-            (order.id, order.owner, order.side, order.price, order.quantity),
+            (
+                order.id,
+                order.owner,
+                order.side,
+                order.price,
+                order.quantity,
+            ),
         );
 
         next_id
@@ -95,12 +96,7 @@ impl OrderbookContract {
 
     pub fn get_order_by_id(env: Env, order_id: u64) -> Option<Order> {
         let orders = Self::get_orders(env);
-        for order in orders.iter() {
-            if order.id == order_id {
-                return Some(order);
-            }
-        }
-        None
+        orders.iter().find(|order| order.id == order_id)
     }
 
     pub fn list_orders_by_owner(env: Env, owner: Address) -> Vec<Order> {
@@ -212,3 +208,6 @@ impl OrderbookContract {
         }
     }
 }
+
+#[cfg(test)]
+mod test;

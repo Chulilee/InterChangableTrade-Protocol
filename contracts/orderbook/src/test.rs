@@ -1,150 +1,142 @@
-
 #![cfg(test)]
 
-extern crate std;
+use super::*;
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
-use crate::{OrderbookContract, OrderbookContractClient};
-use soroban_sdk::{
-    testutils::{
-        Address as _,
-        Events as _,
-    },
-    Address,
-    Env,
-    IntoVal,
-    Symbol,
-};
-
-#[test]
-fn test_place_order() {
+struct Fixture {
+    env: Env,
+    client: OrderbookContractClient<'static>,
+    owner: Address,
+}
+// Set up the test fixture with a default environment and contract instance.
+fn setup() -> Fixture {
     let env = Env::default();
-    let contract_id = env.register_contract(None, OrderbookContract);
+    env.mock_all_auths();
+    let contract_id = env.register(OrderbookContract, ());
     let client = OrderbookContractClient::new(&env, &contract_id);
-
-    let owner = Address::random(&env);
-    let side = crate::OrderSide::Buy;
-    let price = 100;
-    let quantity = 10;
-
-    let order_id = client.place_order(&owner, &side, &price, &quantity);
-
-    let order = client.get_order_by_id(&order_id).unwrap();
-    assert_eq!(order.id, order_id);
-    assert_eq!(order.owner, owner);
-    assert_eq!(order.side, side);
-    assert_eq!(order.price, price);
-    assert_eq!(order.quantity, quantity);
+    let owner = Address::generate(&env);
+    Fixture { env, client, owner }
+}
+// Test cases for the OrderbookContract.
+#[test]
+fn place_order_assigns_incrementing_ids() {
+    let f = setup();
+    let id0 = f.client.place_order(&f.owner, &OrderSide::Buy, &100, &10);
+    let id1 = f.client.place_order(&f.owner, &OrderSide::Sell, &110, &5);
+    assert_eq!(id0, 0);
+    assert_eq!(id1, 1);
+}
+// Test that placing an order stores the order correctly in the contract's state.
+#[test]
+fn place_order_stores_new_order() {
+    let f = setup();
+    let id = f.client.place_order(&f.owner, &OrderSide::Buy, &100, &10);
+    let order = f.client.get_order_by_id(&id).unwrap();
+    assert_eq!(order.owner, f.owner);
+    assert_eq!(order.price, 100);
+    assert_eq!(order.quantity, 10);
     assert_eq!(order.filled, 0);
-    assert_eq!(order.status, crate::OrderStatus::New);
+    assert!(order.status == OrderStatus::New);
+    assert!(order.side == OrderSide::Buy);
+}
+// Test that getting an order by ID returns None for a non-existent order.
+#[test]
+fn get_order_by_id_returns_none_for_missing() {
+    let f = setup();
+    assert!(f.client.get_order_by_id(&999).is_none());
+}
+// Test that listing orders by owner returns only the orders belonging to that owner.
+#[test]
+fn list_orders_by_owner_filters_by_owner() {
+    let f = setup();
+    let other = Address::generate(&f.env);
+    f.client.place_order(&f.owner, &OrderSide::Buy, &100, &10);
+    f.client.place_order(&other, &OrderSide::Sell, &120, &7);
+    f.client.place_order(&f.owner, &OrderSide::Sell, &130, &3);
 
-    let event = env.events().all().last().unwrap();
-    assert_eq!(
-        event.topics.last().unwrap(),
-        (
-            Symbol::new(&env, "placed"),
-            order.id,
-            order.owner,
-            order.side,
-            order.price,
-            order.quantity
-        )
-            .into_val(&env)
-    );
+    let mine = f.client.list_orders_by_owner(&f.owner);
+    assert_eq!(mine.len(), 2);
+    for order in mine.iter() {
+        assert_eq!(order.owner, f.owner);
+    }
+
+    let theirs = f.client.list_orders_by_owner(&other);
+    assert_eq!(theirs.len(), 1);
+}
+// Test that cancelling an order marks its status as Cancelled.
+#[test]
+fn cancel_order_marks_cancelled() {
+    let f = setup();
+    let id = f.client.place_order(&f.owner, &OrderSide::Buy, &100, &10);
+    f.client.cancel_order(&f.owner, &id);
+    let order = f.client.get_order_by_id(&id).unwrap();
+    assert!(order.status == OrderStatus::Cancelled);
+}
+// Test that cancelling a non-existent order fails.
+#[test]
+fn cancel_missing_order_fails() {
+    let f = setup();
+    assert!(f.client.try_cancel_order(&f.owner, &999).is_err());
+}
+// Test that cancelling an order by a non-owner fails.
+#[test]
+fn cancel_by_non_owner_fails() {
+    let f = setup();
+    let stranger = Address::generate(&f.env);
+    let id = f.client.place_order(&f.owner, &OrderSide::Buy, &100, &10);
+    assert!(f.client.try_cancel_order(&stranger, &id).is_err());
 }
 
 #[test]
-fn test_update_order() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, OrderbookContract);
-    let client = OrderbookContractClient::new(&env, &contract_id);
-
-    let owner = Address::random(&env);
-    let side = crate::OrderSide::Buy;
-    let price = 100;
-    let quantity = 10;
-
-    let order_id = client.place_order(&owner, &side, &price, &quantity);
-
-    let new_price = 110;
-    let new_quantity = 12;
-
-    client.update_order(&owner, &order_id, &new_price, &new_quantity);
-
-    let order = client.get_order_by_id(&order_id).unwrap();
-    assert_eq!(order.price, new_price);
-    assert_eq!(order.quantity, new_quantity);
-
-    let event = env.events().all().last().unwrap();
-    assert_eq!(
-        event.topics.last().unwrap(),
-        (
-            Symbol::new(&env, "updated"),
-            order.id,
-            order.price,
-            order.quantity
-        )
-            .into_val(&env)
-    );
+fn update_order_changes_price_and_quantity() {
+    let f = setup();
+    let id = f.client.place_order(&f.owner, &OrderSide::Buy, &100, &10);
+    f.client.update_order(&f.owner, &id, &150, &20);
+    let order = f.client.get_order_by_id(&id).unwrap();
+    assert_eq!(order.price, 150);
+    assert_eq!(order.quantity, 20);
 }
 
 #[test]
-fn test_cancel_order() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, OrderbookContract);
-    let client = OrderbookContractClient::new(&env, &contract_id);
-
-    let owner = Address::random(&env);
-    let side = crate::OrderSide::Buy;
-    let price = 100;
-    let quantity = 10;
-
-    let order_id = client.place_order(&owner, &side, &price, &quantity);
-
-    client.cancel_order(&owner, &order_id);
-
-    let order = client.get_order_by_id(&order_id).unwrap();
-    assert_eq!(order.status, crate::OrderStatus::Cancelled);
-
-    let event = env.events().all().last().unwrap();
-    assert_eq!(
-        event.topics.last().unwrap(),
-        (Symbol::new(&env, "cancelled"), order.id, order.owner).into_val(&env)
-    );
+fn update_by_non_owner_fails() {
+    let f = setup();
+    let stranger = Address::generate(&f.env);
+    let id = f.client.place_order(&f.owner, &OrderSide::Buy, &100, &10);
+    assert!(f
+        .client
+        .try_update_order(&stranger, &id, &150, &20)
+        .is_err());
 }
 
 #[test]
-fn test_get_best_bid_ask() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, OrderbookContract);
-    let client = OrderbookContractClient::new(&env, &contract_id);
+fn best_bid_ask_picks_best_prices() {
+    let f = setup();
+    // Bids (buys): the best bid is the highest price.
+    f.client.place_order(&f.owner, &OrderSide::Buy, &100, &1);
+    f.client.place_order(&f.owner, &OrderSide::Buy, &105, &1);
+    f.client.place_order(&f.owner, &OrderSide::Buy, &95, &1);
+    // Asks (sells): the best ask is the lowest price.
+    f.client.place_order(&f.owner, &OrderSide::Sell, &110, &1);
+    f.client.place_order(&f.owner, &OrderSide::Sell, &108, &1);
+    f.client.place_order(&f.owner, &OrderSide::Sell, &120, &1);
 
-    let owner1 = Address::random(&env);
-    let owner2 = Address::random(&env);
-
-    client.place_order(&owner1, &crate::OrderSide::Buy, &100, &10);
-    client.place_order(&owner2, &crate::OrderSide::Buy, &105, &5);
-
-    client.place_order(&owner1, &crate::OrderSide::Sell, &110, &10);
-    client.place_order(&owner2, &crate::OrderSide::Sell, &108, &5);
-
-    let (best_bid, best_ask) = client.get_best_bid_ask();
+    let (best_bid, best_ask) = f.client.get_best_bid_ask();
     assert_eq!(best_bid, Some(105));
     assert_eq!(best_ask, Some(108));
 }
 
 #[test]
-fn test_list_orders_by_owner() {
-    let env = Env::default();
-    let contract_id = env.register_contract(None, OrderbookContract);
-    let client = OrderbookContractClient::new(&env, &contract_id);
+fn best_bid_ask_ignores_cancelled_orders() {
+    let f = setup();
+    let top = f.client.place_order(&f.owner, &OrderSide::Buy, &100, &1);
+    f.client.place_order(&f.owner, &OrderSide::Buy, &90, &1);
 
-    let owner1 = Address::random(&env);
-    let owner2 = Address::random(&env);
+    // With the 100 bid live it is the best; once cancelled the 90 bid wins.
+    let (before, _) = f.client.get_best_bid_ask();
+    assert_eq!(before, Some(100));
 
-    client.place_order(&owner1, &crate::OrderSide::Buy, &100, &10);
-    client.place_order(&owner2, &crate::OrderSide::Buy, &105, &5);
-    client.place_order(&owner1, &crate::OrderSide::Sell, &110, &10);
-
-    let owner1_orders = client.list_orders_by_owner(&owner1);
-    assert_eq!(owner1_orders.len(), 2);
+    f.client.cancel_order(&f.owner, &top);
+    let (after, ask) = f.client.get_best_bid_ask();
+    assert_eq!(after, Some(90));
+    assert_eq!(ask, None);
 }

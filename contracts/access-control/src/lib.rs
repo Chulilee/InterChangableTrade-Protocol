@@ -119,13 +119,6 @@ impl AccessControl {
         Ok(())
     }
 
-    fn admin(env: &Env) -> Result<Address, Error> {
-        env.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::NotInitialized)
-    }
-
     fn grant_role_internal(env: &Env, role: Symbol, account: Address) {
         let key = DataKey::Role(role.clone(), account.clone());
         if env.storage().persistent().has(&key) {

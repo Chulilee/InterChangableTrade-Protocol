@@ -2,6 +2,7 @@
 
 use super::*;
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Events, Ledger},
     Address, Env,
 };
@@ -35,8 +36,13 @@ fn full_lifecycle_create_vote_queue_execute() {
         &100,
         &150,
     );
+    // `env.events().all()` returns only the most recent invocation's events,
+    // so accumulate the count after each emitting call across the lifecycle.
+    let mut total_events = env.events().all().len();
 
+    env.ledger().set_timestamp(15);
     client.cast_vote(&proposal_id, &voter, &true, &200);
+    total_events += env.events().all().len();
     env.ledger().set_timestamp(25);
     client.finalize(&proposal_id);
 
@@ -44,16 +50,17 @@ fn full_lifecycle_create_vote_queue_execute() {
     assert_eq!(state, ProposalState::Succeeded);
 
     client.queue_execution(&proposal_id, &caller);
+    total_events += env.events().all().len();
     env.ledger().set_timestamp(35);
     client.execute_proposal(&proposal_id, &caller);
+    total_events += env.events().all().len();
 
     let metadata = client.get_proposal(&proposal_id);
     assert_eq!(metadata.value, 100);
     let executed_state = client.get_state(&proposal_id);
     assert_eq!(executed_state, ProposalState::Executed);
     assert_eq!(client.get_parameter(&symbol_short!("fee")), Some(100));
-    let events = env.events().all();
-    assert!(events.len() >= 4);
+    assert!(total_events >= 4);
 }
 
 #[test]
@@ -97,6 +104,7 @@ fn timelock_prevents_execution_before_delay() {
         &20,
     );
 
+    env.ledger().set_timestamp(1);
     client.cast_vote(&proposal_id, &voter, &true, &50);
     env.ledger().set_timestamp(3);
     client.finalize(&proposal_id);
