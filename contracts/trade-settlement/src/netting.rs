@@ -84,7 +84,11 @@ impl NettingEngine {
                 let (debtor_addr, debt_amt) = debtors.get(d_idx).unwrap();
                 let (creditor_addr, cred_amt) = creditors.get(c_idx).unwrap();
 
-                let transfer_amt = if debt_amt < cred_amt { debt_amt } else { cred_amt };
+                let transfer_amt = if debt_amt < cred_amt {
+                    debt_amt
+                } else {
+                    cred_amt
+                };
 
                 if transfer_amt > 0 {
                     obligations.push_back(NetObligation {

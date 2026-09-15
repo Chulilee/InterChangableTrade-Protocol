@@ -50,7 +50,7 @@ fn setup(rate: i128, duration: u64, fund: i128) -> Fixture {
     env.mock_all_auths();
     set_time(&env, 1_000);
 
-    let contract = env.register_contract(None, LiquidityIncentives);
+    let contract = env.register(LiquidityIncentives, ());
     let client = LiquidityIncentivesClient::new(&env, &contract);
     let admin = Address::generate(&env);
     client.initialize(&admin);

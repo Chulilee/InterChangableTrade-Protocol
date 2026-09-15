@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use super::*;
+use risk_management::{RiskManager, RiskManagerClient};
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 struct Fixture {
@@ -18,6 +19,14 @@ fn setup() -> Fixture {
     let client = MarketplaceClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&admin);
+
+    // Deploy and wire a risk manager: create_listing/fill_listing consult it
+    // for order-size limits on every call.
+    let rm_address = env.register(RiskManager, ());
+    let rm = RiskManagerClient::new(&env, &rm_address);
+    rm.initialize(&admin, &1_000_000);
+    client.set_risk_manager(&rm_address);
+
     Fixture {
         seller: Address::generate(&env),
         asset: Address::generate(&env),

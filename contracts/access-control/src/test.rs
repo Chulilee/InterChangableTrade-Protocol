@@ -26,7 +26,7 @@ fn initialize_is_idempotent() {
 
 #[test]
 fn admin_has_admin_role() {
-    let (env, client, admin) = setup();
+    let (_env, client, admin) = setup();
     assert!(client.has_role(&ROLE_ADMIN, &admin));
 }
 
@@ -34,7 +34,7 @@ fn admin_has_admin_role() {
 fn grant_role() {
     let (env, client, admin) = setup();
     let operator = Address::generate(&env);
-    client.grant_role(&ROLE_OPERATOR, &operator);
+    client.grant_role(&ROLE_OPERATOR, &operator, &admin);
     assert!(client.has_role(&ROLE_OPERATOR, &operator));
 }
 
@@ -42,8 +42,8 @@ fn grant_role() {
 fn grant_same_role_twice_no_error() {
     let (env, client, admin) = setup();
     let operator = Address::generate(&env);
-    client.grant_role(&ROLE_OPERATOR, &operator);
-    client.grant_role(&ROLE_OPERATOR, &operator);
+    client.grant_role(&ROLE_OPERATOR, &operator, &admin);
+    client.grant_role(&ROLE_OPERATOR, &operator, &admin);
     assert!(client.has_role(&ROLE_OPERATOR, &operator));
 }
 
@@ -51,9 +51,9 @@ fn grant_same_role_twice_no_error() {
 fn revoke_role() {
     let (env, client, admin) = setup();
     let pauser = Address::generate(&env);
-    client.grant_role(&ROLE_PAUSER, &pauser);
+    client.grant_role(&ROLE_PAUSER, &pauser, &admin);
     assert!(client.has_role(&ROLE_PAUSER, &pauser));
-    client.revoke_role(&ROLE_PAUSER, &pauser);
+    client.revoke_role(&ROLE_PAUSER, &pauser, &admin);
     assert!(!client.has_role(&ROLE_PAUSER, &pauser));
 }
 
@@ -61,7 +61,7 @@ fn revoke_role() {
 fn revoke_nonexistent_role_no_error() {
     let (env, client, admin) = setup();
     let random = Address::generate(&env);
-    client.revoke_role(&ROLE_PAUSER, &random);
+    client.revoke_role(&ROLE_PAUSER, &random, &admin);
     assert!(!client.has_role(&ROLE_PAUSER, &random));
 }
 
@@ -69,17 +69,17 @@ fn revoke_nonexistent_role_no_error() {
 fn renounce_role() {
     let (env, client, admin) = setup();
     let governor = Address::generate(&env);
-    client.grant_role(&ROLE_GOVERNOR, &governor);
+    client.grant_role(&ROLE_GOVERNOR, &governor, &admin);
     assert!(client.has_role(&ROLE_GOVERNOR, &governor));
-    client.renounce_role(&ROLE_GOVERNOR, &governor);
+    client.renounce_role(&ROLE_GOVERNOR, &governor, &governor);
     assert!(!client.has_role(&ROLE_GOVERNOR, &governor));
 }
 
 #[test]
 fn renounce_nonexistent_role_no_error() {
-    let (env, client, admin) = setup();
+    let (env, client, _admin) = setup();
     let random = Address::generate(&env);
-    client.renounce_role(&ROLE_GOVERNOR, &random);
+    client.renounce_role(&ROLE_GOVERNOR, &random, &random);
     assert!(!client.has_role(&ROLE_GOVERNOR, &random));
 }
 
@@ -88,7 +88,7 @@ fn unauthorized_grant_fails() {
     let (env, client, _admin) = setup();
     let random = Address::generate(&env);
     let operator = Address::generate(&env);
-    let res = client.try_grant_role(&ROLE_OPERATOR, &operator);
+    let res = client.try_grant_role(&ROLE_OPERATOR, &operator, &random);
     assert_eq!(res, Err(Ok(Error::Unauthorized)));
 }
 
@@ -96,9 +96,9 @@ fn unauthorized_grant_fails() {
 fn unauthorized_revoke_fails() {
     let (env, client, admin) = setup();
     let operator = Address::generate(&env);
-    client.grant_role(&ROLE_OPERATOR, &operator);
+    client.grant_role(&ROLE_OPERATOR, &operator, &admin);
     let random = Address::generate(&env);
-    let res = client.try_revoke_role(&ROLE_OPERATOR, &operator);
+    let res = client.try_revoke_role(&ROLE_OPERATOR, &operator, &random);
     assert_eq!(res, Err(Ok(Error::Unauthorized)));
 }
 
@@ -107,9 +107,10 @@ fn events_are_emitted_on_grant() {
     let (env, client, admin) = setup();
     let account = Address::generate(&env);
 
-    client.grant_role(&ROLE_OPERATOR, &account);
+    client.grant_role(&ROLE_OPERATOR, &account, &admin);
+    // `all()` returns the events of the most recent invocation: one grant event.
     let events = env.events().all();
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 1);
 }
 
 #[test]
@@ -117,29 +118,30 @@ fn events_are_emitted_on_revoke() {
     let (env, client, admin) = setup();
     let account = Address::generate(&env);
 
-    client.grant_role(&ROLE_OPERATOR, &account);
-    client.revoke_role(&ROLE_OPERATOR, &account);
+    client.grant_role(&ROLE_OPERATOR, &account, &admin);
+    client.revoke_role(&ROLE_OPERATOR, &account, &admin);
 
+    // `all()` returns the events of the most recent invocation: one revoke event.
     let events = env.events().all();
-    assert_eq!(events.len(), 3);
+    assert_eq!(events.len(), 1);
 }
 
 #[test]
 fn get_and_set_role_admin() {
-    let (env, client, admin) = setup();
+    let (_env, client, admin) = setup();
     assert_eq!(client.get_role_admin(&ROLE_OPERATOR), ROLE_ADMIN);
 
     let new_admin_role = symbol_short!("NEW_ADMIN");
-    client.set_role_admin(&ROLE_OPERATOR, &new_admin_role);
+    client.set_role_admin(&ROLE_OPERATOR, &new_admin_role, &admin);
     assert_eq!(client.get_role_admin(&ROLE_OPERATOR), new_admin_role);
 }
 
 #[test]
 fn non_admin_cannot_set_role_admin() {
-    let (env, client, admin) = setup();
+    let (env, client, _admin) = setup();
     let random = Address::generate(&env);
     let new_admin_role = symbol_short!("NEW_ADMIN");
-    let res = client.try_set_role_admin(&ROLE_OPERATOR, &new_admin_role);
+    let res = client.try_set_role_admin(&ROLE_OPERATOR, &new_admin_role, &random);
     assert_eq!(res, Err(Ok(Error::Unauthorized)));
 }
 
@@ -147,10 +149,10 @@ fn non_admin_cannot_set_role_admin() {
 fn transfer_admin_role() {
     let (env, client, admin) = setup();
     let new_admin = Address::generate(&env);
-    client.grant_role(&ROLE_ADMIN, &new_admin);
+    client.grant_role(&ROLE_ADMIN, &new_admin, &admin);
     assert!(client.has_role(&ROLE_ADMIN, &new_admin));
 
     let new_admin_role = symbol_short!("NEW_ADMIN");
-    client.set_role_admin(&ROLE_OPERATOR, &new_admin_role);
+    client.set_role_admin(&ROLE_OPERATOR, &new_admin_role, &new_admin);
     assert_eq!(client.get_role_admin(&ROLE_OPERATOR), new_admin_role);
 }
