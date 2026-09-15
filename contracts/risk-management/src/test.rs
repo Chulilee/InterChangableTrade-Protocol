@@ -10,6 +10,7 @@ struct Fixture {
     trader: Address,
 }
 
+// Set up a test fixture with a default environment, a registered RiskManager contract, and initialized state.
 fn setup() -> Fixture {
     let env = Env::default();
     env.mock_all_auths();
