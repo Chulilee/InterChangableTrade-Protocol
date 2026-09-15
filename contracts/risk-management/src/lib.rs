@@ -109,3 +109,6 @@ impl RiskManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test;

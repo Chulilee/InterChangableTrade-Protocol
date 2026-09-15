@@ -13,7 +13,20 @@ jobs:
       working-directory: contracts
     strategy:
       matrix:
-        contract: [asset-registry, escrow, marketplace, trade-settlement, margining-liquidation]
+        contract:
+          - access-control
+          - asset-registry
+          - escrow
+          - fee-commission
+          - governance
+          - liquidity-incentives
+          - margining-liquidation
+          - marketplace
+          - matching-engine
+          - orderbook
+          - price-oracle
+          - risk-management
+          - trade-settlement
 
     steps:
       - uses: actions/checkout@v4
