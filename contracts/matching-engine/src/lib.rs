@@ -18,6 +18,8 @@ pub enum DataKey {
     Admin,
     /// Auto-incrementing id for the next order.
     NextOrderId,
+    /// Auto-incrementing id for the next trade.
+    NextTradeId,
     /// Order book data structure - maps market (asset+quote) to order book state
     OrderBook((Address, Address)),
 }
@@ -134,6 +136,7 @@ impl MatchingEngine {
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::NextOrderId, &0u64);
+        env.storage().instance().set(&DataKey::NextTradeId, &0u64);
         Ok(())
     }
 
@@ -460,7 +463,11 @@ impl MatchingEngine {
         order_book: &mut MarketOrderBook,
         executed_trades: &mut Vec<Trade>,
     ) -> Result<(), Error> {
-        let mut trade_id: u64 = 0; // In production, this would be a persistent counter
+        let mut trade_id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextTradeId)
+            .unwrap_or(0);
 
         // Continue matching while there are both bids and asks that can match
         while !order_book.bids.is_empty() && !order_book.asks.is_empty() {
@@ -612,6 +619,11 @@ impl MatchingEngine {
             executed_trades.push_back(trade);
             trade_id += 1;
         }
+
+        // Persist the next trade ID counter
+        env.storage()
+            .instance()
+            .set(&DataKey::NextTradeId, &trade_id);
 
         Ok(())
     }
