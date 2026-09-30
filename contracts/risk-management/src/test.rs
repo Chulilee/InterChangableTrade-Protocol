@@ -87,3 +87,39 @@ fn set_limit_by_non_pauser_fails() {
     let res = f.client.try_set_limit(&stranger, &50);
     assert_eq!(res, Err(Ok(RiskError::Unauthorized)));
 }
+
+#[test]
+fn exposure_accumulates_across_orders() {
+    let f = setup();
+    f.client.check_limits(&300, &f.trader);
+    assert_eq!(f.client.get_exposure(&f.trader), 300);
+    f.client.check_limits(&200, &f.trader);
+    assert_eq!(f.client.get_exposure(&f.trader), 500);
+    f.client.check_limits(&100, &f.trader);
+    assert_eq!(f.client.get_exposure(&f.trader), 600);
+}
+
+#[test]
+fn exposure_limit_breached_fails() {
+    let f = setup();
+    f.client.check_limits(&600, &f.trader);
+    let res = f.client.try_check_limits(&500, &f.trader);
+    assert_eq!(res, Err(Ok(RiskError::CumulativeExposureExceeded)));
+}
+
+#[test]
+fn exposure_is_per_trader() {
+    let f = setup();
+    let trader2 = Address::generate(&f.env);
+    f.client.check_limits(&400, &f.trader);
+    f.client.check_limits(&200, &trader2);
+    assert_eq!(f.client.get_exposure(&f.trader), 400);
+    assert_eq!(f.client.get_exposure(&trader2), 200);
+}
+
+#[test]
+fn get_exposure_returns_zero_for_new_trader() {
+    let f = setup();
+    let new_trader = Address::generate(&f.env);
+    assert_eq!(f.client.get_exposure(&new_trader), 0);
+}
