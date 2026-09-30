@@ -103,10 +103,20 @@ impl RiskManager {
             .persistent()
             .get(&DataKey::CumulativeExposure(trader.clone()))
             .unwrap_or(0);
-        if exposure.checked_add(order_size).is_none() {
-            return Err(RiskError::CumulativeExposureExceeded);
-        }
+        let new_exposure = exposure.checked_add(order_size)
+            .ok_or(RiskError::CumulativeExposureExceeded)?;
+        env.storage()
+            .persistent()
+            .set(&DataKey::CumulativeExposure(trader.clone()), &new_exposure);
         Ok(())
+    }
+
+    /// Get the current cumulative exposure for a trader.
+    pub fn get_exposure(env: Env, trader: Address) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::CumulativeExposure(trader))
+            .unwrap_or(0)
     }
 }
 
