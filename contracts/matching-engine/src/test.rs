@@ -285,3 +285,93 @@ fn test_cancel_order_wrong_caller_fails() {
         .try_cancel_order(&f.asset, &f.quote, &sell_id, &stranger);
     assert_eq!(res, Err(Ok(Error::NotAuthorized)));
 }
+
+#[test]
+fn test_trade_ids_unique_across_match_calls() {
+    let f = setup();
+    let buyer = Address::generate(&f.env);
+    let seller1 = Address::generate(&f.env);
+    let seller2 = Address::generate(&f.env);
+
+    // First match: one trade with ID 0
+    let _sell_id1 = f
+        .client
+        .place_order(&seller1, &f.asset, &f.quote, &OrderSide::Sell, &100, &5);
+    f.env.ledger().set_timestamp(2000);
+    let _buy_id1 = f
+        .client
+        .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
+    let trades1 = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(trades1.len(), 1);
+    assert_eq!(trades1.get(0).unwrap().id, 0);
+
+    // Second match: trade ID should be 1, not 0
+    let _sell_id2 = f
+        .client
+        .place_order(&seller2, &f.asset, &f.quote, &OrderSide::Sell, &100, &5);
+    f.env.ledger().set_timestamp(3000);
+    let _buy_id2 = f
+        .client
+        .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
+    let trades2 = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(trades2.len(), 1);
+    assert_eq!(trades2.get(0).unwrap().id, 1);
+}
+
+#[test]
+fn test_trade_ids_unique_across_transactions() {
+    let f = setup();
+    let buyer = Address::generate(&f.env);
+    let seller = Address::generate(&f.env);
+
+    // First transaction: place and match
+    let _sell_id = f
+        .client
+        .place_order(&seller, &f.asset, &f.quote, &OrderSide::Sell, &100, &5);
+    f.env.ledger().set_timestamp(2000);
+    let _buy_id = f
+        .client
+        .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
+    let trades1 = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(trades1.len(), 1);
+    assert_eq!(trades1.get(0).unwrap().id, 0);
+
+    // Second transaction: place and match again
+    let _sell_id2 = f
+        .client
+        .place_order(&seller, &f.asset, &f.quote, &OrderSide::Sell, &100, &5);
+    f.env.ledger().set_timestamp(3000);
+    let _buy_id2 = f
+        .client
+        .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
+    let trades2 = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(trades2.len(), 1);
+    assert_eq!(trades2.get(0).unwrap().id, 1);
+}
+
+#[test]
+fn test_trade_ids_unique_multi_fill() {
+    let f = setup();
+    let buyer = Address::generate(&f.env);
+    let seller1 = Address::generate(&f.env);
+    let seller2 = Address::generate(&f.env);
+
+    // Two sell orders resting
+    let _sell_id1 = f
+        .client
+        .place_order(&seller1, &f.asset, &f.quote, &OrderSide::Sell, &100, &5);
+    f.env.ledger().set_timestamp(1500);
+    let _sell_id2 = f
+        .client
+        .place_order(&seller2, &f.asset, &f.quote, &OrderSide::Sell, &100, &5);
+
+    // One buy order matches both sells
+    f.env.ledger().set_timestamp(2000);
+    let _buy_id = f
+        .client
+        .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &10);
+    let trades = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(trades.len(), 2);
+    assert_eq!(trades.get(0).unwrap().id, 0);
+    assert_eq!(trades.get(1).unwrap().id, 1);
+}
