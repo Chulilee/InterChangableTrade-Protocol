@@ -1,6 +1,16 @@
 #![no_std]
 #![deny(warnings)]
 
+//! # Orderbook Contract
+//!
+//! **⚠️ DEPRECATED**: This contract is deprecated and no longer maintained.
+//! Use the `matching-engine` contract instead, which is the canonical order book
+//! implementation with proper price-time priority matching, partial fills, and
+//! atomic settlement hooks.
+//!
+//! This contract remains deployed for backward compatibility but will not receive
+//! updates or bug fixes. New deployments should use `matching-engine`.
+
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
 
 #[derive(Clone, Copy, PartialEq, Eq)]

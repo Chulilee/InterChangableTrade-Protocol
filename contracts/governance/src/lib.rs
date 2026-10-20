@@ -177,15 +177,12 @@ impl Governance {
             .unwrap_or(Vec::new(&env));
         let existing = Self::find_vote(&votes, voter.clone());
         if let Some(index) = existing {
-            let record = votes.get(index).unwrap();
-            votes.remove(index);
-            if record.support != support || record.weight != weight {
-                votes.push_back(VoteRecord {
-                    voter: voter.clone(),
-                    weight,
-                    support,
-                });
-            }
+            // Update the existing vote in place to preserve vote ordering
+            votes.set(index, VoteRecord {
+                voter: voter.clone(),
+                weight,
+                support,
+            });
         } else {
             votes.push_back(VoteRecord {
                 voter: voter.clone(),

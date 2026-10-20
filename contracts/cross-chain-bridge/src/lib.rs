@@ -1,5 +1,6 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec, token};
+
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, String, Vec, token};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
@@ -40,6 +41,22 @@ pub struct BridgeState {
     pub fee_address: Address,
 }
 
+/// Errors surfaced by the cross-chain bridge.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    AlreadyInitialized = 1,
+    InvalidAttestationThreshold = 2,
+    BridgePaused = 3,
+    NotActiveValidator = 4,
+    DuplicateAttestation = 5,
+    ValidatorAlreadyExists = 6,
+    ValidatorNotFound = 7,
+    NotTransactionOwner = 8,
+    InvalidTransactionState = 9,
+}
+
 #[contract]
 pub struct CrossChainBridge;
 
@@ -52,16 +69,16 @@ impl CrossChainBridge {
         required_attestations: u32,
         fee: i128,
         fee_address: Address,
-    ) {
+    ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::State) {
-            panic!("Bridge is already initialized");
+            return Err(Error::AlreadyInitialized);
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
 
         let validator_count = validators.len();
         if required_attestations > validator_count {
-            panic!("Required attestations cannot exceed validator count");
+            return Err(Error::InvalidAttestationThreshold);
         }
 
         let state = BridgeState {
@@ -83,33 +100,38 @@ impl CrossChainBridge {
             });
         }
         env.storage().instance().set(&DataKey::Validators, &validator_list);
+
+        Ok(())
     }
 
-    pub fn pause_bridge(env: Env) {
+    pub fn pause_bridge(env: Env) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
         let mut state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
         state.is_paused = true;
         env.storage().instance().set(&DataKey::State, &state);
+        Ok(())
     }
 
-    pub fn unpause_bridge(env: Env) {
+    pub fn unpause_bridge(env: Env) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
         let mut state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
         state.is_paused = false;
         env.storage().instance().set(&DataKey::State, &state);
+        Ok(())
     }
 
-    pub fn register_asset(env: Env, asset: Address, wrapped_asset: Address) {
+    pub fn register_asset(env: Env, asset: Address, wrapped_asset: Address) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
         env.storage()
             .instance()
             .set(&DataKey::AssetToWrapped(asset), &wrapped_asset);
+        Ok(())
     }
 
     pub fn lock_asset(
@@ -119,12 +141,12 @@ impl CrossChainBridge {
         amount: i128,
         to_chain: String,
         to_address: String,
-    ) {
+    ) -> Result<u64, Error> {
         user.require_auth();
 
         let mut state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
         if state.is_paused {
-            panic!("Bridge is currently paused");
+            return Err(Error::BridgePaused);
         }
 
         let fee_token_client = token::Client::new(&env, &asset);
@@ -158,16 +180,18 @@ impl CrossChainBridge {
             (String::from_str(&env, "lock_asset"), transaction.user.clone()),
             (transaction.id, transaction.amount),
         );
+
+        Ok(transaction_id)
     }
 
-    pub fn attest_transaction(env: Env, validator: Address, transaction_id: u64) {
+    pub fn attest_transaction(env: Env, validator: Address, transaction_id: u64) -> Result<(), Error> {
         validator.require_auth();
 
         let state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
         let validators: Vec<Validator> = env.storage().instance().get(&DataKey::Validators).unwrap();
 
         if !validators.iter().any(|v| v.public_key == validator && v.is_active) {
-            panic!("Not an active validator");
+            return Err(Error::NotActiveValidator);
         }
 
         let mut transaction: CrossChainTransaction = env
@@ -177,7 +201,7 @@ impl CrossChainBridge {
             .unwrap();
 
         if transaction.attestations.contains(&validator) {
-            panic!("Validator has already attested to this transaction");
+            return Err(Error::DuplicateAttestation);
         }
 
         transaction.attestations.push_back(validator);
@@ -203,15 +227,17 @@ impl CrossChainBridge {
         env.storage()
             .instance()
             .set(&DataKey::Transaction(transaction_id), &transaction);
+
+        Ok(())
     }
 
-    pub fn add_validator(env: Env, new_validator: Address) {
+    pub fn add_validator(env: Env, new_validator: Address) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
         let mut validators: Vec<Validator> = env.storage().instance().get(&DataKey::Validators).unwrap();
         if validators.iter().any(|v| v.public_key == new_validator) {
-            panic!("Validator already exists");
+            return Err(Error::ValidatorAlreadyExists);
         }
 
         validators.push_back(Validator {
@@ -224,9 +250,11 @@ impl CrossChainBridge {
 
         env.storage().instance().set(&DataKey::Validators, &validators);
         env.storage().instance().set(&DataKey::State, &state);
+
+        Ok(())
     }
 
-    pub fn remove_validator(env: Env, validator_to_remove: Address) {
+    pub fn remove_validator(env: Env, validator_to_remove: Address) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
@@ -236,7 +264,7 @@ impl CrossChainBridge {
         validators.retain(|v| v.public_key != validator_to_remove);
 
         if validators.len() == initial_len {
-            panic!("Validator not found");
+            return Err(Error::ValidatorNotFound);
         }
 
         let mut state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
@@ -244,9 +272,11 @@ impl CrossChainBridge {
 
         env.storage().instance().set(&DataKey::Validators, &validators);
         env.storage().instance().set(&DataKey::State, &state);
+
+        Ok(())
     }
 
-    pub fn emergency_withdraw(env: Env, user: Address, transaction_id: u64) {
+    pub fn emergency_withdraw(env: Env, user: Address, transaction_id: u64) -> Result<(), Error> {
         user.require_auth();
 
         let mut transaction: CrossChainTransaction = env
@@ -256,11 +286,11 @@ impl CrossChainBridge {
             .unwrap();
 
         if transaction.user != user {
-            panic!("Not the transaction owner");
+            return Err(Error::NotTransactionOwner);
         }
 
         if transaction.status != TransactionStatus::Pending {
-            panic!("Transaction is not in a pending state");
+            return Err(Error::InvalidTransactionState);
         }
 
         transaction.status = TransactionStatus::Cancelled;
@@ -275,6 +305,8 @@ impl CrossChainBridge {
         env.storage()
             .instance()
             .set(&DataKey::Transaction(transaction_id), &transaction);
+
+        Ok(())
     }
 }
 
@@ -286,3 +318,6 @@ pub enum DataKey {
     Admin,
     AssetToWrapped(Address),
 }
+
+#[cfg(test)]
+mod test;
