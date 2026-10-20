@@ -190,7 +190,7 @@ impl MarginingLiquidation {
         amount: i128,
     ) -> Result<(), Error> {
         user.require_auth();
-        Self::ensure_init(&env)?;
+        let config = Self::ensure_init(&env)?;
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
@@ -207,17 +207,12 @@ impl MarginingLiquidation {
             return Err(Error::InsufficientCollateral);
         }
 
-        // Calculate margin requirements after withdrawal to ensure account remains healthy
+        // Apply the withdrawal to the in-memory account and evaluate margin
+        // against the post-withdrawal balance before persisting anything.
         let new_balance = current_balance - amount;
         account.collateral_balances.set(asset.clone(), new_balance);
 
-        // Check if account maintains sufficient margin after withdrawal
-        if !Self::check_margin_inner(env.clone(), user.clone())? {
-            // Revert the balance change
-            account.collateral_balances.set(asset, current_balance);
-            env.storage()
-                .persistent()
-                .set(&DataKey::MarginAccount(user), &account);
+        if !Self::check_margin_for(env.clone(), &config, &account)? {
             return Err(Error::InsufficientMargin);
         }
 
@@ -366,11 +361,18 @@ impl MarginingLiquidation {
             .persistent()
             .get::<DataKey, MarginAccount>(&DataKey::MarginAccount(user))
             .ok_or(Error::MarginAccountNotFound)?;
+        Self::check_margin_for(env, &config, &account)
+    }
 
+    /// Check maintenance margin for an account snapshot.
+    ///
+    /// Taking the account by reference lets callers evaluate pending changes
+    /// (for example, a withdrawal) before persisting them.
+    fn check_margin_for(env: Env, config: &Config, account: &MarginAccount) -> Result<bool, Error> {
         // Calculate total collateral value and total position liabilities
-        let total_collateral = Self::calculate_total_collateral_value(env.clone(), &account)?;
+        let total_collateral = Self::calculate_total_collateral_value(env.clone(), account)?;
         let (total_position_value, total_unrealized_pnl) =
-            Self::calculate_total_position_metrics(env.clone(), &account);
+            Self::calculate_total_position_metrics(env.clone(), account);
 
         // Account equity = collateral + unrealized P&L
         let account_equity = if total_unrealized_pnl >= 0 {

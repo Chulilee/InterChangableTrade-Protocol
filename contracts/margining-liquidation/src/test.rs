@@ -306,3 +306,26 @@ fn test_oracle_price_drives_margin_health() {
     f.set_price(&quote, &40_000_000_000_000_000);
     assert!(!f.client.check_margin(&user));
 }
+
+#[test]
+fn test_withdraw_collateral_below_maintenance_margin_fails() {
+    let f = setup();
+    let user = Address::generate(&f.env);
+    let asset = Address::generate(&f.env);
+    let quote = Address::generate(&f.env);
+    f.set_price(&quote, &PRICE_ONE);
+
+    f.client.deposit_collateral(&user, &quote, &200);
+    f.client
+        .open_position(&user, &asset, &quote, &100, &10, &true);
+
+    // Notional is 1000 and maintenance margin is 5%, so 50 units of collateral
+    // must remain. Withdrawing 160 leaves only 40 and must be rejected.
+    let res = f.client.try_withdraw_collateral(&user, &quote, &160);
+    assert_eq!(res, Err(Ok(Error::InsufficientMargin)));
+
+    // Withdrawing down to exactly the maintenance threshold is allowed.
+    f.client.withdraw_collateral(&user, &quote, &150);
+    let account = f.client.get_margin_account(&user);
+    assert_eq!(account.collateral_balances.get(quote), Some(50));
+}
