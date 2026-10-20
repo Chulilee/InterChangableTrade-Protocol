@@ -155,6 +155,10 @@ impl LiquidityIncentives {
     ///
     /// Emits `reward_rate` reward tokens per second for `duration_secs` seconds
     /// starting now. Reward tokens must be funded separately via [`Self::fund_pool`].
+    ///
+    /// Returns [`Error::InvalidParameters`] when `reward_rate` is negative or
+    /// `duration_secs` is zero. A zero duration would set `period_finish` to the
+    /// current time, creating a pool that can never emit rewards.
     pub fn create_pool(
         env: Env,
         staking_token: Address,
@@ -163,7 +167,7 @@ impl LiquidityIncentives {
         duration_secs: u64,
     ) -> Result<u64, Error> {
         Self::require_admin(&env)?;
-        if reward_rate < 0 {
+        if duration_secs == 0 || reward_rate < 0 {
             return Err(Error::InvalidParameters);
         }
 
