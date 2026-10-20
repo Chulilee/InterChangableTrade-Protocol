@@ -295,3 +295,37 @@ fn test_admin_field_used_in_setup() {
     // `admin` is a distinct address from the contract.
     assert_ne!(fx.admin, fx.contract);
 }
+
+#[test]
+fn test_create_pool_rejects_zero_duration() {
+    let env = Env::default();
+    env.mock_all_auths();
+    set_time(&env, 1_000);
+
+    let contract = env.register(LiquidityIncentives, ());
+    let client = LiquidityIncentivesClient::new(&env, &contract);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let token_admin = Address::generate(&env);
+    let stake = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let reward = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+
+    // A zero duration would create a pool that can never emit rewards.
+    let res = client.try_create_pool(&stake, &reward, &100, &0);
+    assert_eq!(res, Err(Ok(Error::InvalidParameters)));
+}
+
+#[test]
+fn test_create_pool_accepts_positive_duration() {
+    let fx = setup(100, 60, 1_000);
+    let pool = fx.client().get_pool(&fx.pool_id);
+
+    assert_eq!(pool.reward_rate, 100);
+    assert_eq!(pool.period_finish, 1_060);
+    assert_eq!(pool.last_update_time, 1_000);
+}
