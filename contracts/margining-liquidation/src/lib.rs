@@ -6,7 +6,8 @@
 //! automated liquidation for leveraged positions to support margin trading features.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal,
+    InvokeError, Symbol,
 };
 
 /// Storage keys for margining and liquidation.
@@ -88,6 +89,8 @@ pub enum Error {
     Unauthorized = 8,
     InvalidAmount = 9,
     PositionStillHealthy = 10,
+    /// A collateral price could not be fetched from the configured oracle.
+    PriceUnavailable = 11,
 }
 
 /// Event symbols.
@@ -97,6 +100,9 @@ const EVT_POSITION_OPENED: Symbol = symbol_short!("posopen");
 const EVT_POSITION_CLOSED: Symbol = symbol_short!("posclsd");
 const EVT_LIQUIDATION_TRIGGERED: Symbol = symbol_short!("liq");
 const EVT_MARK_PRICE_UPDATED: Symbol = symbol_short!("markprice");
+
+/// Fixed-point scalar used for margin ratios and oracle prices (18 decimals).
+const FIXED_POINT_SCALE: i128 = 1_000_000_000_000_000_000;
 
 #[contract]
 pub struct MarginingLiquidation;
@@ -184,7 +190,7 @@ impl MarginingLiquidation {
         amount: i128,
     ) -> Result<(), Error> {
         user.require_auth();
-        Self::ensure_init(&env)?;
+        let config = Self::ensure_init(&env)?;
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
@@ -201,17 +207,12 @@ impl MarginingLiquidation {
             return Err(Error::InsufficientCollateral);
         }
 
-        // Calculate margin requirements after withdrawal to ensure account remains healthy
+        // Apply the withdrawal to the in-memory account and evaluate margin
+        // against the post-withdrawal balance before persisting anything.
         let new_balance = current_balance - amount;
         account.collateral_balances.set(asset.clone(), new_balance);
 
-        // Check if account maintains sufficient margin after withdrawal
-        if !Self::check_margin(env.clone(), user.clone()) {
-            // Revert the balance change
-            account.collateral_balances.set(asset, current_balance);
-            env.storage()
-                .persistent()
-                .set(&DataKey::MarginAccount(user), &account);
+        if !Self::check_margin_for(env.clone(), &config, &account)? {
             return Err(Error::InsufficientMargin);
         }
 
@@ -253,7 +254,7 @@ impl MarginingLiquidation {
         let required_margin = notional * config.initial_margin_ratio / 1_000_000_000_000_000_000; // Scale for fixed-point
 
         // Check if account has sufficient collateral to cover margin requirement
-        let total_collateral_value = Self::calculate_total_collateral_value(env.clone(), &account);
+        let total_collateral_value = Self::calculate_total_collateral_value(env.clone(), &account)?;
         if total_collateral_value < required_margin {
             return Err(Error::InsufficientMargin);
         }
@@ -343,29 +344,35 @@ impl MarginingLiquidation {
     }
 
     /// Check if an account maintains sufficient maintenance margin.
+    ///
+    /// Returns `false` when the account cannot be valued (for example, the
+    /// price oracle is unavailable), so callers that only need a boolean see an
+    /// unhealthy account rather than a panic. Use [`Self::get_collateral_value`]
+    /// when the reason matters.
     pub fn check_margin(env: Env, user: Address) -> bool {
-        let config = match env
-            .storage()
-            .instance()
-            .get::<DataKey, Config>(&DataKey::Config)
-        {
-            Some(c) => c,
-            None => return false,
-        };
+        Self::check_margin_inner(env, user).unwrap_or_default()
+    }
 
-        let account = match env
+    /// Check maintenance margin, surfacing oracle and configuration failures.
+    fn check_margin_inner(env: Env, user: Address) -> Result<bool, Error> {
+        let config = Self::ensure_init(&env)?;
+        let account = env
             .storage()
             .persistent()
             .get::<DataKey, MarginAccount>(&DataKey::MarginAccount(user))
-        {
-            Some(a) => a,
-            None => return false,
-        };
+            .ok_or(Error::MarginAccountNotFound)?;
+        Self::check_margin_for(env, &config, &account)
+    }
 
+    /// Check maintenance margin for an account snapshot.
+    ///
+    /// Taking the account by reference lets callers evaluate pending changes
+    /// (for example, a withdrawal) before persisting them.
+    fn check_margin_for(env: Env, config: &Config, account: &MarginAccount) -> Result<bool, Error> {
         // Calculate total collateral value and total position liabilities
-        let total_collateral = Self::calculate_total_collateral_value(env.clone(), &account);
+        let total_collateral = Self::calculate_total_collateral_value(env.clone(), account)?;
         let (total_position_value, total_unrealized_pnl) =
-            Self::calculate_total_position_metrics(env.clone(), &account);
+            Self::calculate_total_position_metrics(env.clone(), account);
 
         // Account equity = collateral + unrealized P&L
         let account_equity = if total_unrealized_pnl >= 0 {
@@ -376,14 +383,14 @@ impl MarginingLiquidation {
 
         // If no positions, account is always healthy
         if account.positions.is_empty() {
-            return true;
+            return Ok(true);
         }
 
         // Calculate current margin ratio: equity / notional position value
-        let margin_ratio = account_equity * 1_000_000_000_000_000_000 / total_position_value;
+        let margin_ratio = account_equity * FIXED_POINT_SCALE / total_position_value;
 
         // Return true if margin ratio is above maintenance requirement
-        margin_ratio >= config.maintenance_margin_ratio
+        Ok(margin_ratio >= config.maintenance_margin_ratio)
     }
 
     /// Trigger liquidation of an undercollateralized account.
@@ -396,7 +403,7 @@ impl MarginingLiquidation {
         let config = Self::ensure_init(&env)?;
 
         // First verify the account is indeed undercollateralized
-        if Self::check_margin(env.clone(), user.clone()) {
+        if Self::check_margin_inner(env.clone(), user.clone())? {
             return Err(Error::PositionStillHealthy);
         }
 
@@ -407,7 +414,7 @@ impl MarginingLiquidation {
             .ok_or(Error::MarginAccountNotFound)?;
 
         // Calculate liquidator incentive
-        let total_collateral_value = Self::calculate_total_collateral_value(env.clone(), &account);
+        let total_collateral_value = Self::calculate_total_collateral_value(env.clone(), &account)?;
         let incentive =
             total_collateral_value * config.liquidation_incentive / 1_000_000_000_000_000_000;
 
@@ -493,6 +500,21 @@ impl MarginingLiquidation {
             .ok_or(Error::PositionNotFound)
     }
 
+    /// Fetch the oracle-priced value of an account's collateral.
+    ///
+    /// The value is expressed in whole price units: each balance is multiplied
+    /// by the oracle's 18-decimal price and divided by [`FIXED_POINT_SCALE`].
+    /// Returns [`Error::PriceUnavailable`] if any collateral price is
+    /// unavailable.
+    pub fn get_collateral_value(env: Env, user: Address) -> Result<i128, Error> {
+        let account = env
+            .storage()
+            .persistent()
+            .get::<DataKey, MarginAccount>(&DataKey::MarginAccount(user))
+            .ok_or(Error::MarginAccountNotFound)?;
+        Self::calculate_total_collateral_value(env, &account)
+    }
+
     /// Ensure the contract is initialized.
     fn ensure_init(env: &Env) -> Result<Config, Error> {
         env.storage()
@@ -501,16 +523,40 @@ impl MarginingLiquidation {
             .ok_or(Error::NotInitialized)
     }
 
-    /// Calculate total USD value of all collateral in an account.
-    fn calculate_total_collateral_value(_env: Env, account: &MarginAccount) -> i128 {
+    /// Calculate the total oracle-priced value of all collateral in an account.
+    ///
+    /// Each balance is multiplied by the asset's 18-decimal price from the
+    /// configured price oracle and divided by [`FIXED_POINT_SCALE`]. Returns
+    /// [`Error::PriceUnavailable`] when a required price cannot be fetched so
+    /// callers reject the operation rather than valuing collateral at 1:1.
+    fn calculate_total_collateral_value(env: Env, account: &MarginAccount) -> Result<i128, Error> {
+        let config = Self::ensure_init(&env)?;
         let mut total = 0i128;
-        for (_asset, amount) in account.collateral_balances.clone() {
-            // In a real implementation, this would fetch the price from the oracle
-            // For this implementation, we'll assume all assets are quoted in the same unit
-            // and simply sum the amounts (would be replaced with actual price lookup)
-            total += amount;
+        for (asset, amount) in account.collateral_balances.clone() {
+            if amount <= 0 {
+                continue;
+            }
+            let price = Self::fetch_price(&env, &config.price_oracle, &asset)?;
+            total = total.saturating_add(amount.saturating_mul(price) / FIXED_POINT_SCALE);
         }
-        total
+        Ok(total)
+    }
+
+    /// Fetch an asset price from the configured price oracle.
+    ///
+    /// The oracle is called by symbol so this contract does not link the
+    /// price-oracle WASM. Any invocation failure (missing contract, stale
+    /// price, unknown asset) is surfaced as [`Error::PriceUnavailable`].
+    fn fetch_price(env: &Env, oracle: &Address, asset: &Address) -> Result<i128, Error> {
+        let result = env.try_invoke_contract::<i128, InvokeError>(
+            oracle,
+            &Symbol::new(env, "get_price"),
+            (asset.clone(),).into_val(env),
+        );
+        match result {
+            Ok(Ok(price)) if price > 0 => Ok(price),
+            _ => Err(Error::PriceUnavailable),
+        }
     }
 
     /// Calculate total notional value and unrealized P&L of all active positions.
