@@ -28,10 +28,14 @@ export function useApi() {
       }
     }
 
-    // Add authorization header
+    // Add authorization header. Content-Type stays unset for FormData bodies
+    // (e.g. avatar uploads): the browser must supply the multipart boundary,
+    // and forcing application/json here would corrupt the upload.
     const headers = new Headers(options.headers);
     headers.set('Authorization', `Bearer ${accessToken}`);
-    headers.set('Content-Type', 'application/json');
+    if (!(options.body instanceof FormData)) {
+      headers.set('Content-Type', 'application/json');
+    }
 
     const response = await fetch(url, {
       ...options,
