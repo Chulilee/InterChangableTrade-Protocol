@@ -6,6 +6,8 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  /** Role strings carried in the auth payload (e.g. ["admin"], issue #26). */
+  roles?: string[];
   createdAt: string;
 }
 
