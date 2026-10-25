@@ -1,6 +1,6 @@
 # Architecture
 
-InterChangableTrade-Protocol is a Soroban (Rust) workspace of smart
+InterChangableTrade-Protocol is a Soroban (Rust) workspace of 16 smart
 contracts. Each contract lives under `contracts/<name>/` and can be built and deployed on its own.
 
 ## Contracts
@@ -20,6 +20,13 @@ contracts. Each contract lives under `contracts/<name>/` and can be built and de
 | `margining-liquidation` | Margin accounts, collateral, and liquidation of leveraged positions.  |
 | `risk-management`       | Market pause switch and order-size limits; called by the marketplace. |
 | `governance`            | Proposals, voting, timelock, and execution into a parameter store.    |
+| `cross-chain-bridge`    | Asset locking, validator attestations, and emergency withdrawals for cross-chain transfers. |
+| `notification`          | Per-user on-chain notifications with read/unread state and email preferences. |
+| `trade-matching`        | Matches listings by category, tags, and price range; ranked trade suggestions. |
+
+`cross-chain-bridge`, `notification`, and `trade-matching` are standalone
+additions: they compile and are tested individually but are not referenced by
+the trading contracts above yet.
 
 ## Typical flow
 
