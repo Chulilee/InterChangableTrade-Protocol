@@ -141,12 +141,99 @@ fn get_user_notifications_newest_first() {
         &None,
     );
 
-    let page = f.client.get_user_notifications(&recipient);
+    let page = f.client.get_user_notifications(&recipient, &None, &0);
     assert_eq!(page.total, 2);
     assert_eq!(page.unread_count, 2);
     // Newest first
     assert_eq!(page.notifications.get_unchecked(0).id, id2);
     assert_eq!(page.notifications.get_unchecked(1).id, id1);
+}
+
+/// Sends `count` notifications to `recipient` and returns their ids oldest
+/// first.
+fn seed_notifications(f: &Fixture, recipient: &Address, count: u64) -> Vec<u64> {
+    let mut ids = Vec::new(&f.env);
+    let mut i = 0;
+    while i < count {
+        let id = f.client.send(
+            &f.admin,
+            recipient,
+            &NotificationKind::Trade,
+            &symbol_short!("seed"),
+            &Some(i),
+        );
+        ids.push_back(id);
+        i += 1;
+    }
+    ids
+}
+
+#[test]
+fn get_user_notifications_paginates_newest_first() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+    let ids = seed_notifications(&f, &recipient, 5);
+
+    let first = f.client.get_user_notifications(&recipient, &Some(0), &2);
+    assert_eq!(first.total, 5);
+    assert_eq!(first.unread_count, 5);
+    assert_eq!(first.notifications.len(), 2);
+    assert_eq!(first.notifications.get_unchecked(0).id, ids.get_unchecked(4));
+    assert_eq!(first.notifications.get_unchecked(1).id, ids.get_unchecked(3));
+
+    let second = f.client.get_user_notifications(&recipient, &Some(2), &2);
+    assert_eq!(second.notifications.len(), 2);
+    assert_eq!(second.notifications.get_unchecked(0).id, ids.get_unchecked(2));
+    assert_eq!(second.notifications.get_unchecked(1).id, ids.get_unchecked(1));
+
+    let last = f.client.get_user_notifications(&recipient, &Some(4), &2);
+    assert_eq!(last.notifications.len(), 1);
+    assert_eq!(last.notifications.get_unchecked(0).id, ids.get_unchecked(0));
+}
+
+#[test]
+fn get_user_notifications_none_offset_reads_from_newest() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+    let ids = seed_notifications(&f, &recipient, 3);
+
+    let page = f.client.get_user_notifications(&recipient, &None, &1);
+    assert_eq!(page.notifications.len(), 1);
+    assert_eq!(page.notifications.get_unchecked(0).id, ids.get_unchecked(2));
+}
+
+#[test]
+fn get_user_notifications_offset_beyond_total_is_empty() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+    seed_notifications(&f, &recipient, 3);
+
+    let page = f.client.get_user_notifications(&recipient, &Some(50), &10);
+    assert_eq!(page.notifications.len(), 0);
+    assert_eq!(page.total, 3);
+    assert_eq!(page.unread_count, 3);
+}
+
+#[test]
+fn get_user_notifications_zero_limit_uses_default_page_size() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+    seed_notifications(&f, &recipient, 25);
+
+    let page = f.client.get_user_notifications(&recipient, &Some(0), &0);
+    assert_eq!(page.notifications.len() as u64, DEFAULT_PAGE_SIZE);
+    assert_eq!(page.total, 25);
+}
+
+#[test]
+fn get_user_notifications_limit_is_clamped_to_max_page_size() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+    seed_notifications(&f, &recipient, MAX_PAGE_SIZE + 1);
+
+    let page = f.client.get_user_notifications(&recipient, &Some(0), &10_000);
+    assert_eq!(page.notifications.len() as u64, MAX_PAGE_SIZE);
+    assert_eq!(page.total, MAX_PAGE_SIZE + 1);
 }
 
 #[test]
@@ -246,7 +333,7 @@ fn mark_all_read_works() {
     assert_eq!(f.client.unread_count(&recipient), 0);
 
     // Verify each notification is now read.
-    let page = f.client.get_user_notifications(&recipient);
+    let page = f.client.get_user_notifications(&recipient, &None, &0);
     for n in page.notifications.iter() {
         assert!(n.read);
     }
@@ -414,9 +501,9 @@ fn notifications_isolated_per_user() {
     assert_eq!(f.client.unread_count(&alice), 2);
     assert_eq!(f.client.unread_count(&bob), 1);
 
-    let alice_page = f.client.get_user_notifications(&alice);
+    let alice_page = f.client.get_user_notifications(&alice, &None, &0);
     assert_eq!(alice_page.total, 2);
 
-    let bob_page = f.client.get_user_notifications(&bob);
+    let bob_page = f.client.get_user_notifications(&bob, &None, &0);
     assert_eq!(bob_page.total, 1);
 }
