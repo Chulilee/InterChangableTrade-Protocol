@@ -46,6 +46,20 @@ describe('buildListingsQuery', () => {
     expect(params.get('sortBy')).toBe('price');
     expect(params.get('sortOrder')).toBe('asc');
   });
+
+  it('serializes facet params', () => {
+    const qs = buildListingsQuery({
+      categories: ['electronics', 'photo'],
+      tags: ['rare'],
+      minPrice: 0,
+      maxPrice: 500
+    });
+    const params = new URLSearchParams(qs.slice(1));
+    expect(params.get('categories')).toBe('electronics,photo');
+    expect(params.get('tags')).toBe('rare');
+    expect(params.get('minPrice')).toBe('0');
+    expect(params.get('maxPrice')).toBe('500');
+  });
 });
 
 describe('listings API client', () => {
