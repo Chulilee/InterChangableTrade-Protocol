@@ -2,6 +2,7 @@ import { createSignal, createEffect, For, Show } from 'solid-js';
 import {
   validateListingInput,
   hasValidationErrors,
+  parseTagsInput,
   type ListingValidationErrors
 } from '../../utils/listingValidation';
 import type { ListingInput } from '../../types/listing';
@@ -28,6 +29,8 @@ export function ListingForm(props: ListingFormProps) {
   );
   const [images, setImages] = createSignal<string[]>(props.initialValues?.images ?? []);
   const [imageInput, setImageInput] = createSignal('');
+  const [category, setCategory] = createSignal(props.initialValues?.category ?? '');
+  const [tagsInput, setTagsInput] = createSignal((props.initialValues?.tags ?? []).join(', '));
   const [errors, setErrors] = createSignal<ListingValidationErrors>({});
 
   // Edit forms load their initial values asynchronously (after fetching the
@@ -39,6 +42,8 @@ export function ListingForm(props: ListingFormProps) {
     setDescription(initial.description ?? '');
     setPrice(initial.price !== undefined ? String(initial.price) : '');
     setImages(initial.images ?? []);
+    setCategory(initial.category ?? '');
+    setTagsInput((initial.tags ?? []).join(', '));
   });
 
   const addImage = () => {
@@ -54,17 +59,33 @@ export function ListingForm(props: ListingFormProps) {
 
   const handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault();
-    const values = { title: title(), description: description(), price: price(), images: images() };
+    const tags = parseTagsInput(tagsInput());
+    const values = {
+      title: title(),
+      description: description(),
+      price: price(),
+      images: images(),
+      category: category(),
+      tags
+    };
     const validationErrors = validateListingInput(values);
     setErrors(validationErrors);
     if (hasValidationErrors(validationErrors)) return;
 
-    await props.onSubmit({
+    const payload: ListingInput = {
       title: title().trim(),
       description: description().trim(),
       price: parseFloat(price()),
       images: images().map((url) => url.trim()).filter(Boolean)
-    });
+    };
+
+    // Category/tags back the listing filters (issue #30); only send them when
+    // the seller actually filled them in, so legacy backends stay compatible.
+    const trimmedCategory = category().trim();
+    if (trimmedCategory) payload.category = trimmedCategory;
+    if (tags.length) payload.tags = tags;
+
+    await props.onSubmit(payload);
   };
 
   return (
@@ -116,6 +137,48 @@ export function ListingForm(props: ListingFormProps) {
         />
         <Show when={errors().price}>
           <p class="text-red-500 text-xs mt-1">{errors().price}</p>
+        </Show>
+      </div>
+
+      <div>
+        <label for="listing-category" class="block text-sm font-medium text-gray-700">
+          Category
+        </label>
+        <input
+          id="listing-category"
+          type="text"
+          placeholder="e.g. Electronics"
+          class="mt-1 block w-full border rounded px-3 py-2"
+          value={category()}
+          onInput={(e) => setCategory(e.currentTarget.value)}
+          aria-describedby="listing-category-hint"
+        />
+        <p id="listing-category-hint" class="text-xs text-gray-500 mt-1">
+          Optional. Used by buyers to filter the marketplace.
+        </p>
+        <Show when={errors().category}>
+          <p role="alert" class="text-red-500 text-xs mt-1">{errors().category}</p>
+        </Show>
+      </div>
+
+      <div>
+        <label for="listing-tags" class="block text-sm font-medium text-gray-700">
+          Tags
+        </label>
+        <input
+          id="listing-tags"
+          type="text"
+          placeholder="e.g. vintage, camera, film"
+          class="mt-1 block w-full border rounded px-3 py-2"
+          value={tagsInput()}
+          onInput={(e) => setTagsInput(e.currentTarget.value)}
+          aria-describedby="listing-tags-hint"
+        />
+        <p id="listing-tags-hint" class="text-xs text-gray-500 mt-1">
+          Optional. Separate tags with commas; they power the tag filter chips.
+        </p>
+        <Show when={errors().tags}>
+          <p role="alert" class="text-red-500 text-xs mt-1">{errors().tags}</p>
         </Show>
       </div>
 

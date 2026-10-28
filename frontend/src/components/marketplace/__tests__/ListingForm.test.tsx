@@ -104,4 +104,81 @@ describe('ListingForm', () => {
 
     expect(screen.getByText('Something went wrong')).toBeTruthy();
   });
+
+  it('submits the category and parsed tags when provided', async () => {
+    const onSubmit = vi.fn();
+    render(() => (
+      <ListingForm
+        submitLabel="Create Listing"
+        submittingLabel="Creating..."
+        isSubmitting={false}
+        onSubmit={onSubmit}
+      />
+    ));
+
+    fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'Vintage Camera' } });
+    fireEvent.input(screen.getByLabelText('Description'), {
+      target: { value: 'A well-kept vintage film camera.' }
+    });
+    fireEvent.input(screen.getByLabelText('Price (USD)'), { target: { value: '120' } });
+    fireEvent.input(screen.getByLabelText('Category'), { target: { value: ' Electronics ' } });
+    fireEvent.input(screen.getByLabelText('Tags'), { target: { value: 'vintage, camera, vintage' } });
+
+    fireEvent.click(screen.getByText('Create Listing'));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      title: 'Vintage Camera',
+      description: 'A well-kept vintage film camera.',
+      price: 120,
+      images: [],
+      category: 'Electronics',
+      tags: ['vintage', 'camera']
+    });
+  });
+
+  it('rejects duplicate tags and does not submit', async () => {
+    const onSubmit = vi.fn();
+    render(() => (
+      <ListingForm
+        submitLabel="Create Listing"
+        submittingLabel="Creating..."
+        isSubmitting={false}
+        onSubmit={onSubmit}
+      />
+    ));
+
+    fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'Vintage Camera' } });
+    fireEvent.input(screen.getByLabelText('Description'), {
+      target: { value: 'A well-kept vintage film camera.' }
+    });
+    fireEvent.input(screen.getByLabelText('Price (USD)'), { target: { value: '120' } });
+    fireEvent.input(screen.getByLabelText('Tags'), { target: { value: 'camera, Camera' } });
+
+    fireEvent.click(screen.getByText('Create Listing'));
+
+    expect(await screen.findByText('Tags must be unique')).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('pre-fills category and tags from initialValues', () => {
+    render(() => (
+      <ListingForm
+        initialValues={{
+          title: 'Old Title',
+          description: 'Old description here.',
+          price: 50,
+          images: [],
+          category: 'Photo',
+          tags: ['rare', 'vintage']
+        }}
+        submitLabel="Save Changes"
+        submittingLabel="Saving..."
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+      />
+    ));
+
+    expect((screen.getByLabelText('Category') as HTMLInputElement).value).toBe('Photo');
+    expect((screen.getByLabelText('Tags') as HTMLInputElement).value).toBe('rare, vintage');
+  });
 });

@@ -15,6 +15,10 @@ export interface Listing {
   images: string[];
   sellerId: string;
   sellerName?: string;
+  /** Marketplace category, e.g. "electronics" (optional for legacy listings). */
+  category?: string;
+  /** Free-form tags used by search/filtering (optional for legacy listings). */
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -25,6 +29,8 @@ export interface ListingInput {
   description: string;
   price: number;
   images: string[];
+  category?: string;
+  tags?: string[];
 }
 
 export type ListingSortBy = 'date' | 'price';
@@ -37,6 +43,14 @@ export interface ListingsQuery {
   search?: string;
   sortBy?: ListingSortBy;
   sortOrder?: SortOrder;
+  /** Restrict results to any of these categories. */
+  categories?: string[];
+  /** Restrict results to listings carrying at least one of these tags. */
+  tags?: string[];
+  /** Inclusive lower price bound. */
+  minPrice?: number;
+  /** Inclusive upper price bound. */
+  maxPrice?: number;
 }
 
 export interface PaginatedListings {

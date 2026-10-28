@@ -34,6 +34,10 @@ export function buildListingsQuery(query: ListingsQuery = {}): string {
   if (query.search) params.set('search', query.search);
   if (query.sortBy) params.set('sortBy', query.sortBy);
   if (query.sortOrder) params.set('sortOrder', query.sortOrder);
+  if (query.categories?.length) params.set('categories', query.categories.join(','));
+  if (query.tags?.length) params.set('tags', query.tags.join(','));
+  if (query.minPrice !== undefined) params.set('minPrice', String(query.minPrice));
+  if (query.maxPrice !== undefined) params.set('maxPrice', String(query.maxPrice));
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }

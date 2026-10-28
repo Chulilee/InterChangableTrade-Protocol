@@ -25,6 +25,14 @@ const EVT_READ: Symbol = symbol_short!("read");
 const EVT_READ_ALL: Symbol = symbol_short!("read_all");
 const EVT_EMAIL_PREF: Symbol = symbol_short!("eml_pref");
 
+/// Hard upper bound on the number of notifications returned by a single
+/// paginated read. Keeps the invocation cost bounded no matter what page size
+/// a client asks for.
+pub const MAX_PAGE_SIZE: u64 = 50;
+
+/// Page size used when a caller passes `limit == 0`.
+pub const DEFAULT_PAGE_SIZE: u64 = 20;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -241,28 +249,55 @@ impl NotificationService {
             .ok_or(Error::NotificationNotFound)
     }
 
-    /// Return all notifications for `user`, newest first, with unread count.
-    pub fn get_user_notifications(env: Env, user: Address) -> NotificationPage {
+    /// Return a page of notifications for `user`, newest first, with unread
+    /// count and total count.
+    ///
+    /// * `start` - number of notifications to skip from the newest end
+    ///   (`None` is treated as `0`).
+    /// * `limit` - maximum number of notifications to return. `0` selects
+    ///   [`DEFAULT_PAGE_SIZE`] and values above [`MAX_PAGE_SIZE`] are clamped,
+    ///   so a single call can never load an unbounded inbox.
+    ///
+    /// Pagination only walks the requested slice of the user's id list, which
+    /// keeps the read cost bounded for users with large inboxes.
+    pub fn get_user_notifications(
+        env: Env,
+        user: Address,
+        start: Option<u64>,
+        limit: u64,
+    ) -> NotificationPage {
         let user_ids: Vec<u64> = env
             .storage()
             .persistent()
             .get(&DataKey::UserNotifications(user.clone()))
             .unwrap_or(Vec::new(&env));
 
-        let mut notifications = Vec::new(&env);
         let total = user_ids.len() as u64;
+        let offset = start.unwrap_or(0);
+        let page_size = if limit == 0 {
+            DEFAULT_PAGE_SIZE
+        } else {
+            limit.min(MAX_PAGE_SIZE)
+        };
 
-        // Iterate in reverse so newest appear first.
-        let mut i = user_ids.len();
-        while i > 0 {
-            i -= 1;
-            if let Some(id) = user_ids.get(i) {
-                if let Some(n) = env
-                    .storage()
-                    .persistent()
-                    .get::<DataKey, Notification>(&DataKey::Notification(id))
-                {
-                    notifications.push_back(n);
+        let mut notifications = Vec::new(&env);
+
+        // The id list is append-ordered (oldest first), so "newest first"
+        // pages are read backwards from the end of the requested slice.
+        if offset < total {
+            let end = (offset + page_size).min(total);
+            let mut i = end as u32;
+            let stop = offset as u32;
+            while i > stop {
+                i -= 1;
+                if let Some(id) = user_ids.get(i) {
+                    if let Some(n) = env
+                        .storage()
+                        .persistent()
+                        .get::<DataKey, Notification>(&DataKey::Notification(id))
+                    {
+                        notifications.push_back(n);
+                    }
                 }
             }
         }
