@@ -1,5 +1,6 @@
 import { createContext, useContext, createSignal, createEffect, Accessor } from 'solid-js';
 import { createStore, Store, SetStoreFunction } from 'solid-js/store';
+import { useNavigate } from '@solidjs/router';
 
 // Types
 export interface User {
@@ -356,11 +357,4 @@ export function useRequiredAuth() {
   });
 
   return useAuth();
-}
-
-// Import useNavigate - this is a workaround, in actual implementation import from @solidjs/router
-function useNavigate() {
-  return (path: string) => {
-    window.location.href = path;
-  };
 }
