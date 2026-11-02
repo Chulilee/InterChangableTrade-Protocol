@@ -6,8 +6,8 @@
 //! automated liquidation for leveraged positions to support margin trading features.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal,
-    InvokeError, Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env,
+    IntoVal, InvokeError, Symbol,
 };
 
 /// Storage keys for margining and liquidation.
@@ -22,6 +22,8 @@ pub enum DataKey {
     Position(u64),
     /// Protocol configuration (initial margin, maintenance margin, liquidation incentive).
     Config,
+    /// Total collateral held in escrow by this contract per asset.
+    EscrowedCollateral(Address),
 }
 
 /// Margin account structure tracking collateral balances and user positions.
@@ -171,6 +173,21 @@ impl MarginingLiquidation {
             .collateral_balances
             .set(asset.clone(), current_balance + amount);
 
+        // Take custody of the collateral: pull the tokens from the user into
+        // this contract. The user has already authorized this call via
+        // `user.require_auth()` above, so the transfer is signed by the user.
+        let token_client = token::Client::new(&env, &asset);
+        token_client.transfer(&user, &env.current_contract_address(), &amount);
+
+        // Track the total escrowed collateral for this asset so that
+        // liquidation incentives can be paid from the unallocated reserve
+        // rather than from other users' escrowed balances.
+        let escrowed_key = DataKey::EscrowedCollateral(asset.clone());
+        let escrowed: i128 = env.storage().persistent().get(&escrowed_key).unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&escrowed_key, &(escrowed + amount));
+
         // Save updated account
         env.storage()
             .persistent()
@@ -220,6 +237,21 @@ impl MarginingLiquidation {
         env.storage()
             .persistent()
             .set(&DataKey::MarginAccount(user.clone()), &account);
+
+        // Return the withdrawn tokens to the user from this contract's custody.
+        let token_client = token::Client::new(&env, &asset);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &user,
+            &amount,
+        );
+
+        // Reduce the escrowed collateral tracking for this asset.
+        let escrowed_key = DataKey::EscrowedCollateral(asset.clone());
+        let escrowed: i128 = env.storage().persistent().get(&escrowed_key).unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&escrowed_key, &(escrowed - amount));
 
         // Emit event
         env.events()
@@ -413,11 +445,6 @@ impl MarginingLiquidation {
             .get::<DataKey, MarginAccount>(&DataKey::MarginAccount(user.clone()))
             .ok_or(Error::MarginAccountNotFound)?;
 
-        // Calculate liquidator incentive
-        let total_collateral_value = Self::calculate_total_collateral_value(env.clone(), &account)?;
-        let incentive =
-            total_collateral_value * config.liquidation_incentive / 1_000_000_000_000_000_000;
-
         // Close all active positions for the account
         for position_id in account.positions.iter() {
             if let Some(mut position) = env
@@ -434,6 +461,45 @@ impl MarginingLiquidation {
             }
         }
 
+        let contract = env.current_contract_address();
+        let mut incentive_paid_value = 0i128;
+
+        // Seize the account's collateral and pay the liquidator. Each
+        // collateral balance is transferred in full to the liquidator. The
+        // liquidation incentive is paid from the contract's unallocated
+        // reserve (tokens held above the escrowed total) so that other
+        // users' escrowed collateral is never touched. If the reserve is
+        // insufficient, the liquidator receives the collateral plus whatever
+        // incentive the reserve can cover.
+        for (asset, balance) in account.collateral_balances.clone() {
+            if balance <= 0 {
+                continue;
+            }
+
+            let token_client = token::Client::new(&env, &asset);
+
+            // Transfer the full collateral balance to the liquidator.
+            token_client.transfer(&contract, &liquidator, &balance);
+
+            // Update escrowed tracking for this asset.
+            let escrowed_key = DataKey::EscrowedCollateral(asset.clone());
+            let escrowed: i128 = env.storage().persistent().get(&escrowed_key).unwrap_or(0);
+            let new_escrowed = escrowed.saturating_sub(balance);
+            env.storage()
+                .persistent()
+                .set(&escrowed_key, &new_escrowed);
+
+            // Pay the liquidation incentive from the unallocated reserve.
+            let reserve = token_client.balance(&contract).saturating_sub(new_escrowed);
+            let incentive_amount = balance * config.liquidation_incentive / FIXED_POINT_SCALE;
+            let payout = incentive_amount.min(reserve);
+            if payout > 0 {
+                token_client.transfer(&contract, &liquidator, &payout);
+                let price = Self::fetch_price(&env, &config.price_oracle, &asset)?;
+                incentive_paid_value += payout * price / FIXED_POINT_SCALE;
+            }
+        }
+
         // Reset the account's collateral balances (all collateral transferred to liquidator)
         let mut updated_account = account.clone();
         for (asset, _) in updated_account.collateral_balances.clone() {
@@ -446,9 +512,9 @@ impl MarginingLiquidation {
 
         // Emit liquidation event
         env.events()
-            .publish((EVT_LIQUIDATION_TRIGGERED, user, liquidator), incentive);
+            .publish((EVT_LIQUIDATION_TRIGGERED, user, liquidator), incentive_paid_value);
 
-        Ok(incentive)
+        Ok(incentive_paid_value)
     }
 
     /// Update the mark price of a position. Only the configured price oracle may
@@ -513,6 +579,19 @@ impl MarginingLiquidation {
             .get::<DataKey, MarginAccount>(&DataKey::MarginAccount(user))
             .ok_or(Error::MarginAccountNotFound)?;
         Self::calculate_total_collateral_value(env, &account)
+    }
+
+    /// Returns the total amount of `asset` held in escrow by this contract.
+    ///
+    /// This is the sum of all collateral deposits of `asset` minus any
+    /// withdrawals and seizures. It is used to separate user escrowed
+    /// collateral from the contract's unallocated reserve, from which
+    /// liquidation incentives are paid.
+    pub fn escrowed_collateral(env: Env, asset: Address) -> i128 {
+        env.storage()
+            .persistent()
+            .get::<DataKey, i128>(&DataKey::EscrowedCollateral(asset))
+            .unwrap_or(0)
     }
 
     /// Ensure the contract is initialized.
