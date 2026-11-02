@@ -158,6 +158,9 @@ impl NotificationService {
     ) -> Result<u64, Error> {
         Self::ensure_init(&env)?;
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        // Only the admin may send notifications; require the caller's actual
+        // signature so an impostor cannot forge the admin's address.
+        caller.require_auth();
         if caller != admin {
             return Err(Error::Unauthorized);
         }
@@ -434,6 +437,7 @@ impl NotificationService {
     /// Transfer admin role. Only the current admin may call this.
     pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        caller.require_auth();
         if caller != admin {
             return Err(Error::Unauthorized);
         }

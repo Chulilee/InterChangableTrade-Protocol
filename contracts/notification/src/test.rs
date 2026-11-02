@@ -507,3 +507,73 @@ fn notifications_isolated_per_user() {
     let bob_page = f.client.get_user_notifications(&bob, &None, &0);
     assert_eq!(bob_page.total, 1);
 }
+
+// ---------------------------------------------------------------------------
+// Authorization: send() and transfer_admin() must require caller auth
+// ---------------------------------------------------------------------------
+
+#[test]
+fn send_requires_caller_auth() {
+    // No mock_all_auths: callers must actually sign.
+    let env = Env::default();
+    let contract_id = env.register(NotificationService, ());
+    let client = NotificationServiceClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let recipient = Address::generate(&env);
+
+    // An impostor passes the admin's address as `caller` but has not signed.
+    // `caller.require_auth()` must reject this before the admin comparison.
+    let res = client.try_send(
+        &admin,
+        &recipient,
+        &NotificationKind::System,
+        &symbol_short!("forged"),
+        &None,
+    );
+    assert!(res.is_err(), "send() must require caller auth");
+
+    // No notification was created.
+    assert_eq!(client.unread_count(&recipient), 0);
+}
+
+#[test]
+fn send_forged_admin_caller_rejected() {
+    // With mock_all_auths (the fixture default), require_auth passes for any
+    // caller, so the admin comparison is the gate. An impostor passing the
+    // admin's address as `caller` is rejected.
+    let f = setup();
+    let stranger = Address::generate(&f.env);
+    let recipient = Address::generate(&f.env);
+
+    let res = f.client.try_send(
+        &f.admin,
+        &recipient,
+        &NotificationKind::System,
+        &symbol_short!("forged"),
+        &None,
+    );
+    assert_eq!(res, Err(Ok(Error::Unauthorized)));
+    assert_eq!(f.client.unread_count(&recipient), 0);
+}
+
+#[test]
+fn transfer_admin_requires_auth() {
+    // No mock_all_auths: callers must actually sign.
+    let env = Env::default();
+    let contract_id = env.register(NotificationService, ());
+    let client = NotificationServiceClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let new_admin = Address::generate(&env);
+
+    // The admin address is passed as `caller` but has not signed, so
+    // `caller.require_auth()` must reject the transfer.
+    let res = client.try_transfer_admin(&admin, &new_admin);
+    assert!(res.is_err(), "transfer_admin() must require caller auth");
+
+    // Admin is unchanged.
+    assert_eq!(client.admin(), admin);
+}
