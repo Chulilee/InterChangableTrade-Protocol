@@ -91,6 +91,7 @@ end-to-end. Known gaps, in rough priority order:
    and the PAUSER/GOVERNOR roles are unused.
 5. **Governance executes into a vacuum.** Proposals write
    `Parameter(Symbol) -> i128` entries that no contract reads.
-6. **Margining does not use the oracle.** `margining-liquidation` stores a
-   `price_oracle` address but computes collateral value and P&L from raw
-   amounts and stored mark prices.
+6. **Margining now takes real token custody.** `margining-liquidation` pulls
+   deposited collateral into the contract via `token::Client`, pays liquidation
+   incentives from an unallocated reserve, and values collateral using the
+   configured price oracle. See `docs/margining-liquidation.md`.
