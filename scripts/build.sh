@@ -13,3 +13,6 @@ ls -1 target/wasm32-unknown-unknown/release/*.wasm 2>/dev/null || {
     echo "    rustup target add wasm32-unknown-unknown"
     exit 1
 }
+
+echo "==> Checking contract sizes (64 KiB Soroban limit)"
+"$(dirname "$0")/check-size.sh"
