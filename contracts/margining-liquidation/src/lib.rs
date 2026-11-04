@@ -251,7 +251,7 @@ impl MarginingLiquidation {
         let escrowed: i128 = env.storage().persistent().get(&escrowed_key).unwrap_or(0);
         env.storage()
             .persistent()
-            .set(&escrowed_key, &(escrowed - amount));
+            .set(&escrowed_key, &escrowed.saturating_sub(amount));
 
         // Emit event
         env.events()
