@@ -1,0 +1,22 @@
+[package]
+name = "integration-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+marketplace = { path = "../contracts/marketplace" }
+escrow = { path = "../contracts/escrow" }
+trade-settlement = { path = "../contracts/trade-settlement" }
+matching-engine = { path = "../contracts/matching-engine" }
+risk-management = { path = "../contracts/risk-management" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
