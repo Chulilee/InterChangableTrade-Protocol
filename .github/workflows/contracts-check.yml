@@ -10,8 +10,6 @@ on:
 jobs:
   check-contracts:
     runs-on: ubuntu-latest
-    defaults:
-      working-directory: contracts
     strategy:
       matrix:
         contract:
