@@ -41,7 +41,7 @@ struct ProtocolFixture {
 /// Deploy a Stellar Asset Contract token and mint `amount` to `owner`.
 fn create_token(env: &Env, admin: &Address, owner: &Address, amount: i128) -> Address {
     let token_address = env.register_stellar_asset_contract(admin.clone());
-    let token_client = soroban_sdk::token::Client::new(env, &token_address);
+    let token_client = soroban_sdk::token::StellarAssetClient::new(env, &token_address);
     token_client.mint(owner, &amount);
     token_address
 }
