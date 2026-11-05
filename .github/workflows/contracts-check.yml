@@ -10,8 +10,6 @@ on:
 jobs:
   check-contracts:
     runs-on: ubuntu-latest
-    defaults:
-      working-directory: contracts
     strategy:
       matrix:
         contract:
@@ -50,16 +48,16 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run cargo check
-        run: cd ${{ matrix.contract }} && cargo check --lib
+        run: cd contracts/${{ matrix.contract }} && cargo check --lib
 
       - name: Run cargo fmt (lint check)
-        run: cd ${{ matrix.contract }} && cargo fmt --all --check
+        run: cd contracts/${{ matrix.contract }} && cargo fmt --all --check
 
       - name: Run cargo clippy
-        run: cd ${{ matrix.contract }} && cargo clippy --all-targets --all-features -- -D warnings
+        run: cd contracts/${{ matrix.contract }} && cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Build WASM binary
-        run: cd ${{ matrix.contract }} && cargo build --target wasm32-unknown-unknown --release
+        run: cd contracts/${{ matrix.contract }} && cargo build --target wasm32-unknown-unknown --release
 
       - name: Check contract size (64 KiB limit)
         run: |
@@ -77,7 +75,7 @@ jobs:
           fi
 
       - name: Run tests
-        run: cd ${{ matrix.contract }} && cargo test
+        run: cd contracts/${{ matrix.contract }} && cargo test
 
   check-integration-tests:
     runs-on: ubuntu-latest
