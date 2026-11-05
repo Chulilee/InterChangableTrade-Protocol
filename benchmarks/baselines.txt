@@ -1,0 +1,9 @@
+# Baseline CPU instructions per benchmark (regenerate: cargo run --release -p benchmarks -- --update-baseline)
+matching-engine/place_order-warm-book(32-asks) 639353
+matching-engine/match_orders-sweep(32-asks) 6675181
+trade-settlement/settle_trade 521326
+trade-settlement/settle_batch_netted-8 1398986
+governance/propose 124385
+governance/finalize_9_votes 78332
+governance/finalize_39_votes 149753
+governance/execute_proposal 85093
