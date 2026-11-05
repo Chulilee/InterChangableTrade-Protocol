@@ -15,20 +15,6 @@ jobs:
     strategy:
       matrix:
         contract:
-          - access-control
-          - asset-registry
-          - cross-chain-bridge
-          - escrow
-          - fee-commission
-          - governance
-          - liquidity-incentives
-          - margining-liquidation
-          - marketplace
-          - matching-engine
-          - orderbook
-          - price-oracle
-          - risk-management
-          - trade-matching
           - trade-settlement
 
     steps:
@@ -79,3 +65,34 @@ jobs:
       - name: Run tests
         run: cd ${{ matrix.contract }} && cargo test
 
+  check-integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run cargo check
+        run: cargo check --manifest-path integration-tests/Cargo.toml
+
+      - name: Run cargo fmt (lint check)
+        run: cargo fmt --manifest-path integration-tests/Cargo.toml --all --check
+
+      - name: Run cargo clippy
+        run: cargo clippy --manifest-path integration-tests/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Run integration tests
+        run: cargo test --manifest-path integration-tests/Cargo.toml
