@@ -215,7 +215,8 @@ impl CrossChainBridge {
                 .get(&DataKey::AssetToWrapped(transaction.asset.clone()))
                 .unwrap();
 
-            let token_client = token::Client::new(&env, &wrapped_asset);
+            // The bridge must hold the wrapped-asset admin (see register_asset) to mint.
+            let token_client = token::StellarAssetClient::new(&env, &wrapped_asset);
             token_client.mint(&transaction.user, &transaction.amount);
 
             env.events().publish(
@@ -261,7 +262,13 @@ impl CrossChainBridge {
         let mut validators: Vec<Validator> = env.storage().instance().get(&DataKey::Validators).unwrap();
         let initial_len = validators.len();
 
-        validators.retain(|v| v.public_key != validator_to_remove);
+        let mut kept: Vec<Validator> = Vec::new(&env);
+        for validator in validators.iter() {
+            if validator.public_key != validator_to_remove {
+                kept.push_back(validator);
+            }
+        }
+        validators = kept;
 
         if validators.len() == initial_len {
             return Err(Error::ValidatorNotFound);
