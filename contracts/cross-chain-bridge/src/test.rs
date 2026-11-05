@@ -1,356 +1,504 @@
 #![cfg(test)]
-extern crate std;
+
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env, String,
-    token,
+    testutils::Address as _,
+    token, Address, Env, String, Vec,
 };
 
-fn create_bridge_contract<'a>(env: &Env) -> CrossChainBridgeClient<'a> {
-    let contract_id = env.register_contract(None, CrossChainBridge);
-    CrossChainBridgeClient::new(env, &contract_id)
+const BRIDGE_FEE: i128 = 5;
+const DEPOSIT: i128 = 1_000;
+
+/// Shared fixture: real Stellar Asset Contracts for the locked asset and the
+/// wrapped asset (the bridge is the wrapped-asset admin so it can mint on
+/// completion). The bridge starts initialized with 3 validators, a required
+/// attestation threshold of 2, and a 5-unit fee routed to `fee_address`.
+struct BridgeFixture {
+    env: Env,
+    client: CrossChainBridgeClient<'static>,
+    contract_id: Address,
+    admin: Address,
+    fee_address: Address,
+    v1: Address,
+    v2: Address,
+    v3: Address,
+    asset: Address,
+    asset_admin: token::StellarAssetClient<'static>,
+    wrapped_asset: Address,
+    user: Address,
 }
 
-#[test]
-fn test_initialize() {
+fn setup() -> BridgeFixture {
     let env = Env::default();
-    let client = create_bridge_contract(&env);
+    env.mock_all_auths_allowing_non_root_auth();
 
-    let admin = Address::random(&env);
+    let contract_id = env.register(CrossChainBridge, ());
+    let client = CrossChainBridgeClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let fee_address = Address::generate(&env);
+    let v1 = Address::generate(&env);
+    let v2 = Address::generate(&env);
+    let v3 = Address::generate(&env);
+
+    // Locked asset: an SAC whose admin (the bridge admin) mints to the user.
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let asset = sac.address();
+    let asset_admin = token::StellarAssetClient::new(&env, &asset);
+    asset_admin.mint(&user, &10_000);
+
+    // Wrapped asset: SAC owned by the bridge contract, matching the
+    // register_asset wiring the bridge expects at completion time.
+    let wrapped_asset = env.register_stellar_asset_contract_v2(contract_id.clone()).address();
+
     let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(Address::random(&env));
-    validators.push_back(Address::random(&env));
-    let required_attestations = 2;
+    validators.push_back(v1.clone());
+    validators.push_back(v2.clone());
+    validators.push_back(v3.clone());
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
+    client
+        .initialize(&admin, &validators, &2u32, &BRIDGE_FEE, &fee_address);
 
-    let state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
-    assert_eq!(state.validator_count, 2);
+    client.register_asset(&asset, &wrapped_asset);
+
+    BridgeFixture {
+        env,
+        client,
+        contract_id,
+        admin,
+        fee_address,
+        v1,
+        v2,
+        v3,
+        asset,
+        asset_admin,
+        wrapped_asset,
+        user,
+    }
+}
+
+fn lock(f: &BridgeFixture, amount: i128) -> u64 {
+    let to_chain = String::from_str(&f.env, "ETH");
+    let to_address = String::from_str(&f.env, "0xabc123");
+    f.client
+        .lock_asset(&f.user, &f.asset, &amount, &to_chain, &to_address)
+}
+
+fn asset_client(f: &BridgeFixture) -> token::Client<'static> {
+    token::Client::new(&f.env, &f.asset)
+}
+
+fn wrapped_client(f: &BridgeFixture) -> token::Client<'static> {
+    token::Client::new(&f.env, &f.wrapped_asset)
+}
+
+/* ------------------------------------------------------------------ */
+/* Initialization                                                      */
+/* ------------------------------------------------------------------ */
+
+#[test]
+fn test_initialize_sets_state_and_validators() {
+    let f = setup();
+
+    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    assert_eq!(state.validator_count, 3);
     assert_eq!(state.required_attestations, 2);
     assert_eq!(state.is_paused, false);
     assert_eq!(state.next_transaction_id, 0);
+    assert_eq!(state.fee, BRIDGE_FEE);
+    assert_eq!(state.fee_address, f.fee_address);
 
-    let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-    assert_eq!(stored_admin, admin);
+    let stored_admin: Address = f.env.storage().instance().get(&DataKey::Admin).unwrap();
+    assert_eq!(stored_admin, f.admin);
 
-    let stored_validators: Vec<Validator> = env.storage().instance().get(&DataKey::Validators).unwrap();
-    assert_eq!(stored_validators.len(), 2);
+    let stored_validators: Vec<Validator> = f.env.storage().instance().get(&DataKey::Validators).unwrap();
+    assert_eq!(stored_validators.len(), 3);
 }
 
 #[test]
 fn test_initialize_twice_fails() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+    let f = setup();
 
-    let admin = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(Address::random(&env));
-    let required_attestations = 1;
-
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
-    let res = client.try_initialize(&admin, &validators, &required_attestations);
+    let mut validators: Vec<Address> = Vec::new(&f.env);
+    validators.push_back(f.v1.clone());
+    let res = f.client.try_initialize(&f.admin, &validators, &1u32, &BRIDGE_FEE, &f.fee_address);
     assert_eq!(res, Err(Ok(Error::AlreadyInitialized)));
 }
 
 #[test]
-fn test_lock_asset() {
+fn test_initialize_threshold_exceeding_validators_fails() {
     let env = Env::default();
-    let client = create_bridge_contract(&env);
+    env.mock_all_auths_allowing_non_root_auth();
+    let contract_id = env.register(CrossChainBridge, ());
+    let client = CrossChainBridgeClient::new(&env, &contract_id);
 
-    let admin = Address::random(&env);
+    let admin = Address::generate(&env);
+    let fee_address = Address::generate(&env);
     let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(Address::random(&env));
-    let required_attestations = 1;
+    validators.push_back(Address::generate(&env));
+    validators.push_back(Address::generate(&env));
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
+    let res = client.try_initialize(&admin, &validators, &3u32, &BRIDGE_FEE, &fee_address);
+    assert_eq!(res, Err(Ok(Error::InvalidAttestationThreshold)));
+}
 
-    let user = Address::random(&env);
-    let asset = Address::random(&env);
-    let amount = 100;
-    let to_chain = String::from_str(&env, "ETH");
-    let to_address = String::from_str(&env, "0x1234");
+/* ------------------------------------------------------------------ */
+/* lock_asset                                                          */
+/* ------------------------------------------------------------------ */
 
-    let tx_id = client.lock_asset(&user, &asset, &amount, &to_chain, &to_address).unwrap();
+#[test]
+fn test_fixture_can_mint_more_assets_to_user() {
+    let f = setup();
 
-    let transaction: CrossChainTransaction =
-        env.storage().instance().get(&DataKey::Transaction(tx_id)).unwrap();
-    assert_eq!(transaction.id, tx_id);
-    assert_eq!(transaction.user, user);
-    assert_eq!(transaction.asset, asset);
-    assert_eq!(transaction.amount, amount);
-    assert_eq!(transaction.to_chain, to_chain);
-    assert_eq!(transaction.to_address, to_address);
+    f.asset_admin.mint(&f.user, &500);
+
+    assert_eq!(asset_client(&f).balance(&f.user), 10_500);
+}
+
+#[test]
+fn test_lock_asset_deducts_fee_and_transfers_remainder() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
+
+    assert_eq!(asset_client(&f).balance(&f.user), 10_000 - DEPOSIT);
+    assert_eq!(asset_client(&f).balance(&f.fee_address), BRIDGE_FEE);
+    assert_eq!(asset_client(&f).balance(&f.contract_id), DEPOSIT - BRIDGE_FEE);
+
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
+
+    assert_eq!(transaction.amount, DEPOSIT - BRIDGE_FEE);
     assert_eq!(transaction.status, TransactionStatus::Pending);
+    assert_eq!(transaction.attestations.len(), 0);
 
-    let state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
     assert_eq!(state.next_transaction_id, 1);
 }
 
 #[test]
-fn test_lock_asset_when_paused_fails() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_lock_records_full_transaction() {
+    let f = setup();
+    let to_chain = String::from_str(&f.env, "ETH");
+    let to_address = String::from_str(&f.env, "0xabc123");
 
-    let admin = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(Address::random(&env));
-    let required_attestations = 1;
+    let tx_id = f
+        .client
+        .lock_asset(&f.user, &f.asset, &DEPOSIT, &to_chain, &to_address);
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
-    client.pause_bridge().unwrap();
 
-    let user = Address::random(&env);
-    let asset = Address::random(&env);
-    let amount = 100;
-    let to_chain = String::from_str(&env, "ETH");
-    let to_address = String::from_str(&env, "0x1234");
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
 
-    let res = client.try_lock_asset(&user, &asset, &amount, &to_chain, &to_address);
+    assert_eq!(transaction.id, tx_id);
+    assert_eq!(transaction.user, f.user);
+    assert_eq!(transaction.asset, f.asset);
+    assert_eq!(transaction.to_chain, to_chain);
+    assert_eq!(transaction.to_address, to_address);
+    assert_eq!(transaction.amount, DEPOSIT - BRIDGE_FEE);
+}
+
+#[test]
+fn test_lock_when_paused_fails_and_fee_is_kept_away() {
+    let f = setup();
+    f.client.pause_bridge();
+
+    let to_chain = String::from_str(&f.env, "ETH");
+    let to_address = String::from_str(&f.env, "0xabc123");
+    let res = f.client.try_lock_asset(&f.user, &f.asset, &DEPOSIT, &to_chain, &to_address);
+
     assert_eq!(res, Err(Ok(Error::BridgePaused)));
+    // No fee was taken and nothing was locked.
+    assert_eq!(asset_client(&f).balance(&f.fee_address), 0);
+    assert_eq!(asset_client(&f).balance(&f.contract_id), 0);
 }
 
 #[test]
-fn test_attest_transaction() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_lock_after_unpause_works_again() {
+    let f = setup();
+    f.client.pause_bridge();
+    f.client.unpause_bridge();
 
-    let admin = Address::random(&env);
-    let validator = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(validator.clone());
-    let required_attestations = 1;
+    let tx_id = lock(&f, DEPOSIT);
+    assert_eq!(tx_id, 0);
+    assert_eq!(asset_client(&f).balance(&f.fee_address), BRIDGE_FEE);
+}
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
+/* ------------------------------------------------------------------ */
+/* Attestation flow                                                    */
+/* ------------------------------------------------------------------ */
 
-    let user = Address::random(&env);
-    let asset = Address::random(&env);
-    let amount = 100;
-    let to_chain = String::from_str(&env, "ETH");
-    let to_address = String::from_str(&env, "0x1234");
+#[test]
+fn test_attest_below_threshold_keeps_pending() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let tx_id = client.lock_asset(&user, &asset, &amount, &to_chain, &to_address).unwrap();
+    f.client.attest_transaction(&f.v1, &tx_id);
 
-    let wrapped_asset_id = env.register_stellar_asset_contract(asset.clone());
-    client.register_asset(&asset, &wrapped_asset_id).unwrap();
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
 
-    client.attest_transaction(&validator, &tx_id).unwrap();
+    assert_eq!(transaction.status, TransactionStatus::Pending);
+    assert_eq!(transaction.attestations.len(), 1);
+    assert_eq!(wrapped_client(&f).balance(&f.user), 0);
+}
 
-    let transaction: CrossChainTransaction =
-        env.storage().instance().get(&DataKey::Transaction(tx_id)).unwrap();
+#[test]
+fn test_full_attestation_flow_with_multiple_validators() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
+
+    // First attestation: still pending.
+    f.client.attest_transaction(&f.v1, &tx_id);
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
+
+    assert_eq!(transaction.status, TransactionStatus::Pending);
+
+    // Second attestation: required_attestations reached.
+    f.client.attest_transaction(&f.v2, &tx_id);
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
+
     assert_eq!(transaction.status, TransactionStatus::Completed);
-
-    let token_client = token::Client::new(&env, &wrapped_asset_id);
-    assert_eq!(token_client.balance(&user), amount);
+    assert_eq!(transaction.attestations.len(), 2);
+    // The wrapped asset is minted to the user with the post-fee amount.
+    assert_eq!(wrapped_client(&f).balance(&f.user), DEPOSIT - BRIDGE_FEE);
+    assert_eq!(asset_client(&f).balance(&f.contract_id), DEPOSIT - BRIDGE_FEE);
 }
 
 #[test]
-fn test_attest_transaction_invalid_validator_fails() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_attest_past_threshold_rejected_and_mints_only_once() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let admin = Address::random(&env);
-    let validator = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(validator.clone());
-    let required_attestations = 1;
+    f.client.attest_transaction(&f.v1, &tx_id);
+    f.client.attest_transaction(&f.v2, &tx_id);
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
+    // v3's attestation must be refused and must not re-mint.
+    let res = f.client.try_attest_transaction(&f.v3, &tx_id);
+    assert_eq!(res, Err(Ok(Error::InvalidTransactionState)));
+    assert_eq!(wrapped_client(&f).balance(&f.user), DEPOSIT - BRIDGE_FEE);
+}
 
-    let user = Address::random(&env);
-    let asset = Address::random(&env);
-    let amount = 100;
-    let to_chain = String::from_str(&env, "ETH");
-    let to_address = String::from_str(&env, "0x1234");
+#[test]
+fn test_attest_by_non_validator_fails() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let tx_id = client.lock_asset(&user, &asset, &amount, &to_chain, &to_address).unwrap();
-
-    let invalid_validator = Address::random(&env);
-    let res = client.try_attest_transaction(&invalid_validator, &tx_id);
+    let stranger = Address::generate(&f.env);
+    let res = f.client.try_attest_transaction(&stranger, &tx_id);
     assert_eq!(res, Err(Ok(Error::NotActiveValidator)));
 }
 
 #[test]
-fn test_attest_transaction_duplicate_fails() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_duplicate_attestation_fails() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let admin = Address::random(&env);
-    let validator = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(validator.clone());
-    let required_attestations = 1;
+    f.client.attest_transaction(&f.v1, &tx_id);
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
-
-    let user = Address::random(&env);
-    let asset = Address::random(&env);
-    let amount = 100;
-    let to_chain = String::from_str(&env, "ETH");
-    let to_address = String::from_str(&env, "0x1234");
-
-    let tx_id = client.lock_asset(&user, &asset, &amount, &to_chain, &to_address).unwrap();
-
-    let wrapped_asset_id = env.register_stellar_asset_contract(asset.clone());
-    client.register_asset(&asset, &wrapped_asset_id).unwrap();
-
-    client.attest_transaction(&validator, &tx_id).unwrap();
-
-    let res = client.try_attest_transaction(&validator, &tx_id);
+    let res = f.client.try_attest_transaction(&f.v1, &tx_id);
     assert_eq!(res, Err(Ok(Error::DuplicateAttestation)));
 }
 
+/* ------------------------------------------------------------------ */
+/* Validator management                                                 */
+/* ------------------------------------------------------------------ */
+
 #[test]
-fn test_add_validator() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_add_validator_then_attest_with_it() {
+    let f = setup();
 
-    let admin = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(Address::random(&env));
-    let required_attestations = 1;
+    let v4 = Address::generate(&f.env);
+    f.client.add_validator(&v4);
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
+    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    assert_eq!(state.validator_count, 4);
 
-    let new_validator = Address::random(&env);
-    client.add_validator(&new_validator).unwrap();
+    // The new validator can participate in attestations.
+    let tx_id = lock(&f, DEPOSIT);
+    f.client.attest_transaction(&f.v1, &tx_id);
+    f.client.attest_transaction(&v4, &tx_id);
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
 
-    let state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
-    assert_eq!(state.validator_count, 2);
+    assert_eq!(transaction.status, TransactionStatus::Completed);
 }
 
 #[test]
 fn test_add_duplicate_validator_fails() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+    let f = setup();
 
-    let admin = Address::random(&env);
-    let validator = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(validator.clone());
-    let required_attestations = 1;
-
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
-
-    let res = client.try_add_validator(&validator);
+    let res = f.client.try_add_validator(&f.v1);
     assert_eq!(res, Err(Ok(Error::ValidatorAlreadyExists)));
+
+    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    assert_eq!(state.validator_count, 3);
 }
 
 #[test]
-fn test_remove_validator() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_remove_validator_while_transaction_pending() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let admin = Address::random(&env);
-    let validator = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(validator.clone());
-    let required_attestations = 1;
+    // Removing a validator whose transaction is still pending.
+    f.client.remove_validator(&f.v1);
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
+    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    assert_eq!(state.validator_count, 2);
 
-    client.remove_validator(&validator).unwrap();
+    // The removed validator can no longer attest.
+    let res = f.client.try_attest_transaction(&f.v1, &tx_id);
+    assert_eq!(res, Err(Ok(Error::NotActiveValidator)));
 
-    let state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
-    assert_eq!(state.validator_count, 0);
+    // The pending transaction can still complete with the remaining validators.
+    f.client.attest_transaction(&f.v2, &tx_id);
+    f.client.attest_transaction(&f.v3, &tx_id);
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
+
+    assert_eq!(transaction.status, TransactionStatus::Completed);
+    assert_eq!(wrapped_client(&f).balance(&f.user), DEPOSIT - BRIDGE_FEE);
 }
 
 #[test]
-fn test_remove_nonexistent_validator_fails() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_remove_added_validator_twice_fails() {
+    let f = setup();
 
-    let admin = Address::random(&env);
-    let validator = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(validator.clone());
-    let required_attestations = 1;
+    let v4 = Address::generate(&f.env);
+    f.client.add_validator(&v4);
+    f.client.remove_validator(&v4);
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
-
-    let nonexistent = Address::random(&env);
-    let res = client.try_remove_validator(&nonexistent);
+    let res = f.client.try_remove_validator(&v4);
     assert_eq!(res, Err(Ok(Error::ValidatorNotFound)));
 }
 
 #[test]
-fn test_emergency_withdraw() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_remove_nonexistent_validator_fails() {
+    let f = setup();
 
-    let admin = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(Address::random(&env));
-    let required_attestations = 1;
+    let stranger = Address::generate(&f.env);
+    let res = f.client.try_remove_validator(&stranger);
+    assert_eq!(res, Err(Ok(Error::ValidatorNotFound)));
+}
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
+/* ------------------------------------------------------------------ */
+/* emergency_withdraw                                                   */
+/* ------------------------------------------------------------------ */
 
-    let user = Address::random(&env);
-    let asset = Address::random(&env);
-    let amount = 100;
-    let to_chain = String::from_str(&env, "ETH");
-    let to_address = String::from_str(&env, "0x1234");
+#[test]
+fn test_emergency_withdraw_refunds_pending_transaction() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let tx_id = client.lock_asset(&user, &asset, &amount, &to_chain, &to_address).unwrap();
+    f.client.emergency_withdraw(&f.user, &tx_id);
 
-    client.emergency_withdraw(&user, &tx_id).unwrap();
+    // The user recovers the locked amount (post-fee), not the fee.
+    assert_eq!(asset_client(&f).balance(&f.user), 10_000 - BRIDGE_FEE);
+    assert_eq!(asset_client(&f).balance(&f.contract_id), 0);
+    assert_eq!(asset_client(&f).balance(&f.fee_address), BRIDGE_FEE);
 
-    let transaction: CrossChainTransaction =
-        env.storage().instance().get(&DataKey::Transaction(tx_id)).unwrap();
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
+
     assert_eq!(transaction.status, TransactionStatus::Cancelled);
 }
 
 #[test]
+fn test_emergency_withdraw_after_pause() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
+
+    // Bridge paused after funds were locked; the user can still recover them.
+    f.client.pause_bridge();
+
+    f.client.emergency_withdraw(&f.user, &tx_id);
+
+    let transaction: CrossChainTransaction = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Transaction(tx_id))
+        .unwrap();
+
+    assert_eq!(transaction.status, TransactionStatus::Cancelled);
+    assert_eq!(asset_client(&f).balance(&f.user), 10_000 - BRIDGE_FEE);
+}
+
+#[test]
 fn test_emergency_withdraw_not_owner_fails() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let admin = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(Address::random(&env));
-    let required_attestations = 1;
-
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
-
-    let user = Address::random(&env);
-    let asset = Address::random(&env);
-    let amount = 100;
-    let to_chain = String::from_str(&env, "ETH");
-    let to_address = String::from_str(&env, "0x1234");
-
-    let tx_id = client.lock_asset(&user, &asset, &amount, &to_chain, &to_address).unwrap();
-
-    let stranger = Address::random(&env);
-    let res = client.try_emergency_withdraw(&stranger, &tx_id);
+    let stranger = Address::generate(&f.env);
+    let res = f.client.try_emergency_withdraw(&stranger, &tx_id);
     assert_eq!(res, Err(Ok(Error::NotTransactionOwner)));
 }
 
 #[test]
-fn test_emergency_withdraw_invalid_state_fails() {
-    let env = Env::default();
-    let client = create_bridge_contract(&env);
+fn test_emergency_withdraw_after_completion_fails() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let admin = Address::random(&env);
-    let validator = Address::random(&env);
-    let mut validators: Vec<Address> = Vec::new(&env);
-    validators.push_back(validator.clone());
-    let required_attestations = 1;
+    f.client.attest_transaction(&f.v1, &tx_id);
+    f.client.attest_transaction(&f.v2, &tx_id);
 
-    client.initialize(&admin, &validators, &required_attestations).unwrap();
+    let res = f.client.try_emergency_withdraw(&f.user, &tx_id);
+    assert_eq!(res, Err(Ok(Error::InvalidTransactionState)));
+    assert_eq!(wrapped_client(&f).balance(&f.user), DEPOSIT - BRIDGE_FEE);
+}
 
-    let user = Address::random(&env);
-    let asset = Address::random(&env);
-    let amount = 100;
-    let to_chain = String::from_str(&env, "ETH");
-    let to_address = String::from_str(&env, "0x1234");
+#[test]
+fn test_emergency_withdraw_twice_fails() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let tx_id = client.lock_asset(&user, &asset, &amount, &to_chain, &to_address).unwrap();
+    f.client.emergency_withdraw(&f.user, &tx_id);
 
-    let wrapped_asset_id = env.register_stellar_asset_contract(asset.clone());
-    client.register_asset(&asset, &wrapped_asset_id).unwrap();
+    let res = f.client.try_emergency_withdraw(&f.user, &tx_id);
+    assert_eq!(res, Err(Ok(Error::InvalidTransactionState)));
+}
 
-    client.attest_transaction(&validator, &tx_id).unwrap();
+#[test]
+fn test_attest_after_emergency_withdraw_fails() {
+    let f = setup();
+    let tx_id = lock(&f, DEPOSIT);
 
-    let res = client.try_emergency_withdraw(&user, &tx_id);
+    f.client.emergency_withdraw(&f.user, &tx_id);
+
+    let res = f.client.try_attest_transaction(&f.v1, &tx_id);
     assert_eq!(res, Err(Ok(Error::InvalidTransactionState)));
 }
