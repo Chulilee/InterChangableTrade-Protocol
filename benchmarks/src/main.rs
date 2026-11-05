@@ -81,7 +81,13 @@ fn funded_tokens() -> TokenPair {
     quote_admin.mint(&alice, &100_000);
     quote_admin.mint(&bob, &100_000);
 
-    TokenPair { env, base, quote, alice, bob }
+    TokenPair {
+        env,
+        base,
+        quote,
+        alice,
+        bob,
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -113,7 +119,11 @@ fn bench_place_order_warm_book() -> Row {
     let buyer = Address::generate(&t.env);
     client.place_order(&buyer, &t.base, &t.quote, &OrderSide::Buy, &100, &8);
 
-    measured_row(&t.env, "matching-engine/place_order-warm-book(32-asks)", "insert buy above the book")
+    measured_row(
+        &t.env,
+        "matching-engine/place_order-warm-book(32-asks)",
+        "insert buy above the book",
+    )
 }
 
 fn bench_match_orders_sweep() -> Row {
@@ -167,8 +177,19 @@ fn bench_settle_batch_netted(count: u32) -> Row {
     let mut ids: soroban_sdk::Vec<u64> = soroban_sdk::Vec::new(&t.env);
     for i in 0..count {
         // Alternate direction A→B and B→A so netting cancels most transfers.
-        let (buyer, seller) = if i % 2 == 0 { (t.alice.clone(), t.bob.clone()) } else { (t.bob.clone(), t.alice.clone()) };
-        let id = client.open(&buyer, &seller, &t.base, &t.quote, &(10 + i as i128), &(15 + i as i128));
+        let (buyer, seller) = if i % 2 == 0 {
+            (t.alice.clone(), t.bob.clone())
+        } else {
+            (t.bob.clone(), t.alice.clone())
+        };
+        let id = client.open(
+            &buyer,
+            &seller,
+            &t.base,
+            &t.quote,
+            &(10 + i as i128),
+            &(15 + i as i128),
+        );
         ids.push_back(id);
         t.env.ledger().set_timestamp(1_000 + i as u64 + 1);
     }
@@ -205,10 +226,10 @@ fn open_proposal(env: &Env, client: &GovernanceClient) -> u64 {
         &proposer,
         &symbol_short!("feestoreq"),
         &symbol_short!("fee"),
-        &100, // value
-        &10,  // start_time
-        &20,  // end_time
-        &5,   // timelock
+        &100,     // value
+        &10,      // start_time
+        &20,      // end_time
+        &5,       // timelock
         &100u128, // quorum
         &150u128, // threshold
     )
@@ -220,7 +241,11 @@ fn bench_governance_propose() -> Row {
     env.ledger().set_timestamp(1);
     let proposal_id = open_proposal(&env, &client);
 
-    measured_row(&env, "governance/propose", format!("proposal_id={}", proposal_id))
+    measured_row(
+        &env,
+        "governance/propose",
+        format!("proposal_id={}", proposal_id),
+    )
 }
 
 fn bench_governance_finalize(voter_count: u32) -> Row {
@@ -261,7 +286,11 @@ fn bench_governance_execute_proposal() -> Row {
 
     client.execute_proposal(&proposal_id, &voter);
 
-    measured_row(&env, "governance/execute_proposal", format!("proposal_id={}", proposal_id))
+    measured_row(
+        &env,
+        "governance/execute_proposal",
+        format!("proposal_id={}", proposal_id),
+    )
 }
 
 /* ------------------------------------------------------------------ */
@@ -321,7 +350,10 @@ fn main() {
 
     println!("ICTP benchmark report (Soroban cost-estimate budget)");
     println!();
-    println!("{:<42} {:>13} {:>14}", "benchmark", "instructions", "memory_bytes");
+    println!(
+        "{:<42} {:>13} {:>14}",
+        "benchmark", "instructions", "memory_bytes"
+    );
     println!("{:-<42} {:-<13} {:-<14}", "-", "-", "-");
     for row in &rows {
         println!(
@@ -349,7 +381,10 @@ fn main() {
 
     let baseline = load_baseline(BASELINE_PATH);
     if baseline.is_empty() {
-        println!("\nNo baseline found at {} — record one with --update-baseline (not failing).", BASELINE_PATH);
+        println!(
+            "\nNo baseline found at {} — record one with --update-baseline (not failing).",
+            BASELINE_PATH
+        );
         return;
     }
 

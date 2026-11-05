@@ -137,9 +137,7 @@ impl NotificationService {
             return Err(Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage()
-            .instance()
-            .set(&DataKey::NextId, &0u64);
+        env.storage().instance().set(&DataKey::NextId, &0u64);
         Ok(())
     }
 
@@ -168,11 +166,7 @@ impl NotificationService {
             return Err(Error::EmptyTitle);
         }
 
-        let id: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::NextId)
-            .unwrap_or(0);
+        let id: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(0);
         let timestamp = env.ledger().timestamp();
 
         let notification = Notification {
@@ -197,10 +191,9 @@ impl NotificationService {
             .get(&DataKey::UserNotifications(recipient.clone()))
             .unwrap_or(Vec::new(&env));
         user_ids.push_back(id);
-        env.storage().persistent().set(
-            &DataKey::UserNotifications(recipient.clone()),
-            &user_ids,
-        );
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserNotifications(recipient.clone()), &user_ids);
 
         // Increment unread count.
         let prev: u64 = env
@@ -208,10 +201,9 @@ impl NotificationService {
             .persistent()
             .get(&DataKey::UnreadCount(recipient.clone()))
             .unwrap_or(0);
-        env.storage().persistent().set(
-            &DataKey::UnreadCount(recipient.clone()),
-            &(prev + 1),
-        );
+        env.storage()
+            .persistent()
+            .set(&DataKey::UnreadCount(recipient.clone()), &(prev + 1));
 
         // Auto-update email_preference_sent flag (simulated email send).
         let settings: UserSettings = env
@@ -231,13 +223,10 @@ impl NotificationService {
         }
 
         // Emit notification event for real-time off-chain indexing.
-        env.events()
-            .publish((EVT_NOTIFICATION, id), notification);
+        env.events().publish((EVT_NOTIFICATION, id), notification);
 
         // Increment global next id.
-        env.storage()
-            .instance()
-            .set(&DataKey::NextId, &(id + 1));
+        env.storage().instance().set(&DataKey::NextId, &(id + 1));
 
         Ok(id)
     }
@@ -346,14 +335,12 @@ impl NotificationService {
             .get(&DataKey::UnreadCount(caller.clone()))
             .unwrap_or(0);
         if prev > 0 {
-            env.storage().persistent().set(
-                &DataKey::UnreadCount(caller.clone()),
-                &(prev - 1),
-            );
+            env.storage()
+                .persistent()
+                .set(&DataKey::UnreadCount(caller.clone()), &(prev - 1));
         }
 
-        env.events()
-            .publish((EVT_READ, id), caller);
+        env.events().publish((EVT_READ, id), caller);
 
         Ok(notification)
     }
@@ -384,13 +371,11 @@ impl NotificationService {
             }
         }
 
-        env.storage().persistent().set(
-            &DataKey::UnreadCount(caller.clone()),
-            &0u64,
-        );
+        env.storage()
+            .persistent()
+            .set(&DataKey::UnreadCount(caller.clone()), &0u64);
 
-        env.events()
-            .publish((EVT_READ_ALL, marked), caller);
+        env.events().publish((EVT_READ_ALL, marked), caller);
 
         Ok(marked)
     }
@@ -410,14 +395,14 @@ impl NotificationService {
     pub fn set_email_opt_in(env: Env, user: Address, opt_in: bool) -> Result<UserSettings, Error> {
         user.require_auth();
 
-        let settings = UserSettings { email_opt_in: opt_in };
-        env.storage().persistent().set(
-            &DataKey::UserSettings(user.clone()),
-            &settings,
-        );
+        let settings = UserSettings {
+            email_opt_in: opt_in,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserSettings(user.clone()), &settings);
 
-        env.events()
-            .publish((EVT_EMAIL_PREF, opt_in), user);
+        env.events().publish((EVT_EMAIL_PREF, opt_in), user);
 
         Ok(settings)
     }
@@ -441,9 +426,7 @@ impl NotificationService {
         if caller != admin {
             return Err(Error::Unauthorized);
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::Admin, &new_admin);
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
         Ok(())
     }
 

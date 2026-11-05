@@ -240,11 +240,7 @@ impl MarginingLiquidation {
 
         // Return the withdrawn tokens to the user from this contract's custody.
         let token_client = token::Client::new(&env, &asset);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &user,
-            &amount,
-        );
+        token_client.transfer(&env.current_contract_address(), &user, &amount);
 
         // Reduce the escrowed collateral tracking for this asset.
         let escrowed_key = DataKey::EscrowedCollateral(asset.clone());
@@ -485,9 +481,7 @@ impl MarginingLiquidation {
             let escrowed_key = DataKey::EscrowedCollateral(asset.clone());
             let escrowed: i128 = env.storage().persistent().get(&escrowed_key).unwrap_or(0);
             let new_escrowed = escrowed.saturating_sub(balance);
-            env.storage()
-                .persistent()
-                .set(&escrowed_key, &new_escrowed);
+            env.storage().persistent().set(&escrowed_key, &new_escrowed);
 
             // Pay the liquidation incentive from the unallocated reserve.
             let reserve = token_client.balance(&contract).saturating_sub(new_escrowed);
@@ -511,8 +505,10 @@ impl MarginingLiquidation {
             .set(&DataKey::MarginAccount(user.clone()), &updated_account);
 
         // Emit liquidation event
-        env.events()
-            .publish((EVT_LIQUIDATION_TRIGGERED, user, liquidator), incentive_paid_value);
+        env.events().publish(
+            (EVT_LIQUIDATION_TRIGGERED, user, liquidator),
+            incentive_paid_value,
+        );
 
         Ok(incentive_paid_value)
     }

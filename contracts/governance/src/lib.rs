@@ -178,11 +178,14 @@ impl Governance {
         let existing = Self::find_vote(&votes, voter.clone());
         if let Some(index) = existing {
             // Update the existing vote in place to preserve vote ordering
-            votes.set(index, VoteRecord {
-                voter: voter.clone(),
-                weight,
-                support,
-            });
+            votes.set(
+                index,
+                VoteRecord {
+                    voter: voter.clone(),
+                    weight,
+                    support,
+                },
+            );
         } else {
             votes.push_back(VoteRecord {
                 voter: voter.clone(),

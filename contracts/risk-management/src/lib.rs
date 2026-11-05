@@ -103,7 +103,8 @@ impl RiskManager {
             .persistent()
             .get(&DataKey::CumulativeExposure(trader.clone()))
             .unwrap_or(0);
-        let new_exposure = exposure.checked_add(order_size)
+        let new_exposure = exposure
+            .checked_add(order_size)
             .ok_or(RiskError::CumulativeExposureExceeded)?;
         env.storage()
             .persistent()
