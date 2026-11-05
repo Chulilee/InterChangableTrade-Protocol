@@ -102,7 +102,7 @@ fn test_initialize_sets_state_and_validators() {
     let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
     assert_eq!(state.validator_count, 3);
     assert_eq!(state.required_attestations, 2);
-    assert_eq!(state.is_paused, false);
+    assert!(!state.is_paused);
     assert_eq!(state.next_transaction_id, 0);
     assert_eq!(state.fee, BRIDGE_FEE);
     assert_eq!(state.fee_address, f.fee_address);
