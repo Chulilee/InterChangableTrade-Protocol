@@ -1,10 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{
-    testutils::Address as _,
-    token, Address, Env, String, Vec,
-};
+use soroban_sdk::{testutils::Address as _, token, Address, Env, String, Vec};
 
 const BRIDGE_FEE: i128 = 5;
 const DEPOSIT: i128 = 1_000;
@@ -50,15 +47,16 @@ fn setup() -> BridgeFixture {
 
     // Wrapped asset: SAC owned by the bridge contract, matching the
     // register_asset wiring the bridge expects at completion time.
-    let wrapped_asset = env.register_stellar_asset_contract_v2(contract_id.clone()).address();
+    let wrapped_asset = env
+        .register_stellar_asset_contract_v2(contract_id.clone())
+        .address();
 
     let mut validators: Vec<Address> = Vec::new(&env);
     validators.push_back(v1.clone());
     validators.push_back(v2.clone());
     validators.push_back(v3.clone());
 
-    client
-        .initialize(&admin, &validators, &2u32, &BRIDGE_FEE, &fee_address);
+    client.initialize(&admin, &validators, &2u32, &BRIDGE_FEE, &fee_address);
 
     client.register_asset(&asset, &wrapped_asset);
 
@@ -104,7 +102,7 @@ fn test_initialize_sets_state_and_validators() {
     let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
     assert_eq!(state.validator_count, 3);
     assert_eq!(state.required_attestations, 2);
-    assert_eq!(state.is_paused, false);
+    assert!(!state.is_paused);
     assert_eq!(state.next_transaction_id, 0);
     assert_eq!(state.fee, BRIDGE_FEE);
     assert_eq!(state.fee_address, f.fee_address);
@@ -112,7 +110,12 @@ fn test_initialize_sets_state_and_validators() {
     let stored_admin: Address = f.env.storage().instance().get(&DataKey::Admin).unwrap();
     assert_eq!(stored_admin, f.admin);
 
-    let stored_validators: Vec<Validator> = f.env.storage().instance().get(&DataKey::Validators).unwrap();
+    let stored_validators: Vec<Validator> = f
+        .env
+        .storage()
+        .instance()
+        .get(&DataKey::Validators)
+        .unwrap();
     assert_eq!(stored_validators.len(), 3);
 }
 
@@ -122,7 +125,9 @@ fn test_initialize_twice_fails() {
 
     let mut validators: Vec<Address> = Vec::new(&f.env);
     validators.push_back(f.v1.clone());
-    let res = f.client.try_initialize(&f.admin, &validators, &1u32, &BRIDGE_FEE, &f.fee_address);
+    let res = f
+        .client
+        .try_initialize(&f.admin, &validators, &1u32, &BRIDGE_FEE, &f.fee_address);
     assert_eq!(res, Err(Ok(Error::AlreadyInitialized)));
 }
 
@@ -163,7 +168,10 @@ fn test_lock_asset_deducts_fee_and_transfers_remainder() {
 
     assert_eq!(asset_client(&f).balance(&f.user), 10_000 - DEPOSIT);
     assert_eq!(asset_client(&f).balance(&f.fee_address), BRIDGE_FEE);
-    assert_eq!(asset_client(&f).balance(&f.contract_id), DEPOSIT - BRIDGE_FEE);
+    assert_eq!(
+        asset_client(&f).balance(&f.contract_id),
+        DEPOSIT - BRIDGE_FEE
+    );
 
     let transaction: CrossChainTransaction = f
         .env
@@ -190,7 +198,6 @@ fn test_lock_records_full_transaction() {
         .client
         .lock_asset(&f.user, &f.asset, &DEPOSIT, &to_chain, &to_address);
 
-
     let transaction: CrossChainTransaction = f
         .env
         .storage()
@@ -213,7 +220,9 @@ fn test_lock_when_paused_fails_and_fee_is_kept_away() {
 
     let to_chain = String::from_str(&f.env, "ETH");
     let to_address = String::from_str(&f.env, "0xabc123");
-    let res = f.client.try_lock_asset(&f.user, &f.asset, &DEPOSIT, &to_chain, &to_address);
+    let res = f
+        .client
+        .try_lock_asset(&f.user, &f.asset, &DEPOSIT, &to_chain, &to_address);
 
     assert_eq!(res, Err(Ok(Error::BridgePaused)));
     // No fee was taken and nothing was locked.
@@ -284,7 +293,10 @@ fn test_full_attestation_flow_with_multiple_validators() {
     assert_eq!(transaction.attestations.len(), 2);
     // The wrapped asset is minted to the user with the post-fee amount.
     assert_eq!(wrapped_client(&f).balance(&f.user), DEPOSIT - BRIDGE_FEE);
-    assert_eq!(asset_client(&f).balance(&f.contract_id), DEPOSIT - BRIDGE_FEE);
+    assert_eq!(
+        asset_client(&f).balance(&f.contract_id),
+        DEPOSIT - BRIDGE_FEE
+    );
 }
 
 #[test]

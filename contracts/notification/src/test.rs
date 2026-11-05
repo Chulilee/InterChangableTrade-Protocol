@@ -17,11 +17,7 @@ fn setup() -> Fixture {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    Fixture {
-        client,
-        admin,
-        env,
-    }
+    Fixture { client, admin, env }
 }
 
 // ---------------------------------------------------------------------------
@@ -178,13 +174,25 @@ fn get_user_notifications_paginates_newest_first() {
     assert_eq!(first.total, 5);
     assert_eq!(first.unread_count, 5);
     assert_eq!(first.notifications.len(), 2);
-    assert_eq!(first.notifications.get_unchecked(0).id, ids.get_unchecked(4));
-    assert_eq!(first.notifications.get_unchecked(1).id, ids.get_unchecked(3));
+    assert_eq!(
+        first.notifications.get_unchecked(0).id,
+        ids.get_unchecked(4)
+    );
+    assert_eq!(
+        first.notifications.get_unchecked(1).id,
+        ids.get_unchecked(3)
+    );
 
     let second = f.client.get_user_notifications(&recipient, &Some(2), &2);
     assert_eq!(second.notifications.len(), 2);
-    assert_eq!(second.notifications.get_unchecked(0).id, ids.get_unchecked(2));
-    assert_eq!(second.notifications.get_unchecked(1).id, ids.get_unchecked(1));
+    assert_eq!(
+        second.notifications.get_unchecked(0).id,
+        ids.get_unchecked(2)
+    );
+    assert_eq!(
+        second.notifications.get_unchecked(1).id,
+        ids.get_unchecked(1)
+    );
 
     let last = f.client.get_user_notifications(&recipient, &Some(4), &2);
     assert_eq!(last.notifications.len(), 1);
@@ -231,7 +239,9 @@ fn get_user_notifications_limit_is_clamped_to_max_page_size() {
     let recipient = Address::generate(&f.env);
     seed_notifications(&f, &recipient, MAX_PAGE_SIZE + 1);
 
-    let page = f.client.get_user_notifications(&recipient, &Some(0), &10_000);
+    let page = f
+        .client
+        .get_user_notifications(&recipient, &Some(0), &10_000);
     assert_eq!(page.notifications.len() as u64, MAX_PAGE_SIZE);
     assert_eq!(page.total, MAX_PAGE_SIZE + 1);
 }

@@ -49,7 +49,11 @@ impl Fixture {
 
     /// Register a new Stellar Asset Contract, mint `amount` to `user`, and
     /// return the token admin client and the token address.
-    fn fund_token(&self, user: &Address, amount: i128) -> (token::StellarAssetClient<'static>, Address) {
+    fn fund_token(
+        &self,
+        user: &Address,
+        amount: i128,
+    ) -> (token::StellarAssetClient<'static>, Address) {
         let admin = Address::generate(&self.env);
         let sac = self.env.register_stellar_asset_contract_v2(admin);
         let token = sac.address();

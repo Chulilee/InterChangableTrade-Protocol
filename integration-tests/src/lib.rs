@@ -13,8 +13,8 @@
 //!    transfers the assets atomically.
 
 use escrow::{EscrowContract, EscrowContractClient, State};
-use matching_engine::{MatchingEngine, MatchingEngineClient, OrderSide};
 use marketplace::{Marketplace, MarketplaceClient, Status as ListingStatus};
+use matching_engine::{MatchingEngine, MatchingEngineClient, OrderSide};
 use risk_management::{RiskManager, RiskManagerClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
@@ -27,7 +27,6 @@ use trade_settlement::{SettlementStatus, TradeSettlement, TradeSettlementClient}
 /// into a single environment.
 struct ProtocolFixture {
     env: Env,
-    admin: Address,
     seller: Address,
     buyer: Address,
     base_token: Address,
@@ -40,7 +39,9 @@ struct ProtocolFixture {
 
 /// Deploy a Stellar Asset Contract token and mint `amount` to `owner`.
 fn create_token(env: &Env, admin: &Address, owner: &Address, amount: i128) -> Address {
-    let token_address = env.register_stellar_asset_contract(admin.clone());
+    let token_address = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let token_client = soroban_sdk::token::StellarAssetClient::new(env, &token_address);
     token_client.mint(owner, &amount);
     token_address
@@ -48,7 +49,7 @@ fn create_token(env: &Env, admin: &Address, owner: &Address, amount: i128) -> Ad
 
 fn setup() -> ProtocolFixture {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     env.ledger().with_mut(|li| {
         li.timestamp = 1_000_000;
     });
@@ -86,7 +87,6 @@ fn setup() -> ProtocolFixture {
 
     ProtocolFixture {
         env,
-        admin,
         seller,
         buyer,
         base_token,
@@ -109,9 +109,9 @@ fn marketplace_escrow_settlement_happy_path() {
     let f = setup();
 
     // 1. Seller lists 10 units of base_token for 100 quote_token.
-    let listing_id = f
-        .marketplace
-        .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
+    let listing_id =
+        f.marketplace
+            .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
     let listing = f.marketplace.get(&listing_id);
     assert_eq!(listing.status, ListingStatus::Open);
 
@@ -167,9 +167,9 @@ fn marketplace_escrow_settlement_happy_path() {
 fn marketplace_escrow_refund_path() {
     let f = setup();
 
-    let listing_id = f
-        .marketplace
-        .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
+    let listing_id =
+        f.marketplace
+            .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
     f.marketplace.fill_listing(&listing_id, &f.buyer);
 
     // Buyer funds escrow.
@@ -193,12 +193,17 @@ fn settlement_fails_on_insufficient_balance() {
 
     // Give buyer only 50 quote (less than the 100 needed).
     let poor_buyer = Address::generate(&f.env);
-    let quote_client = soroban_sdk::token::Client::new(&f.env, &f.quote_token);
+    let quote_client = soroban_sdk::token::StellarAssetClient::new(&f.env, &f.quote_token);
     quote_client.mint(&poor_buyer, &50);
 
-    let trade_id = f
-        .settlement
-        .open(&poor_buyer, &f.seller, &f.base_token, &f.quote_token, &10, &100);
+    let trade_id = f.settlement.open(
+        &poor_buyer,
+        &f.seller,
+        &f.base_token,
+        &f.quote_token,
+        &10,
+        &100,
+    );
     let result = f.settlement.settle_trade(&trade_id, &poor_buyer);
     assert_eq!(result.status, SettlementStatus::Failed);
     assert!(result.failure_reason.is_some());
@@ -222,6 +227,7 @@ fn matching_engine_to_settlement_flow() {
         &100,
         &10,
     );
+    let _ = sell_id;
 
     // 2. Place a buy order: buyer wants 10 base at price 100 quote each.
     let buy_id = f.matching.place_order(
@@ -266,7 +272,9 @@ fn matching_engine_to_settlement_flow() {
 
     // 6. Verify orders are marked Filled.
     let buy_order = f.matching.get_order(&f.base_token, &f.quote_token, &buy_id);
-    let sell_order = f.matching.get_order(&f.base_token, &f.quote_token, &sell_id);
+    let sell_order = f
+        .matching
+        .get_order(&f.base_token, &f.quote_token, &sell_id);
     assert_eq!(buy_order.status, matching_engine::OrderStatus::Filled);
     assert_eq!(sell_order.status, matching_engine::OrderStatus::Filled);
 }
@@ -328,6 +336,7 @@ fn cancelled_order_produces_no_trade() {
         &100,
         &10,
     );
+    let _ = sell_id;
 
     // Buyer places then cancels.
     let buy_id = f.matching.place_order(
@@ -357,9 +366,9 @@ fn full_protocol_lifecycle() {
     let f = setup();
 
     // --- Phase 1: Marketplace path ---
-    let listing_id = f
-        .marketplace
-        .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
+    let listing_id =
+        f.marketplace
+            .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
     f.marketplace.fill_listing(&listing_id, &f.buyer);
     f.escrow
         .fund(&10u64, &f.buyer, &f.seller, &f.quote_token, &100);
