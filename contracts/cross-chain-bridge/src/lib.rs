@@ -200,6 +200,10 @@ impl CrossChainBridge {
             .get(&DataKey::Transaction(transaction_id))
             .unwrap();
 
+        if transaction.status != TransactionStatus::Pending {
+            return Err(Error::InvalidTransactionState);
+        }
+
         if transaction.attestations.contains(&validator) {
             return Err(Error::DuplicateAttestation);
         }
