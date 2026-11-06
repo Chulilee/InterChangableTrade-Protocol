@@ -17,11 +17,7 @@ fn setup() -> Fixture {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    Fixture {
-        client,
-        admin,
-        env,
-    }
+    Fixture { client, admin, env }
 }
 
 // ---------------------------------------------------------------------------
@@ -59,7 +55,7 @@ fn send_creates_notification() {
     let n = f.client.get(&id);
     assert_eq!(n.recipient, recipient);
     assert_eq!(n.kind, NotificationKind::Trade);
-    assert_eq!(n.read, false);
+    assert!(!n.read);
     assert_eq!(n.reference_id, Some(42));
 }
 
@@ -178,13 +174,25 @@ fn get_user_notifications_paginates_newest_first() {
     assert_eq!(first.total, 5);
     assert_eq!(first.unread_count, 5);
     assert_eq!(first.notifications.len(), 2);
-    assert_eq!(first.notifications.get_unchecked(0).id, ids.get_unchecked(4));
-    assert_eq!(first.notifications.get_unchecked(1).id, ids.get_unchecked(3));
+    assert_eq!(
+        first.notifications.get_unchecked(0).id,
+        ids.get_unchecked(4)
+    );
+    assert_eq!(
+        first.notifications.get_unchecked(1).id,
+        ids.get_unchecked(3)
+    );
 
     let second = f.client.get_user_notifications(&recipient, &Some(2), &2);
     assert_eq!(second.notifications.len(), 2);
-    assert_eq!(second.notifications.get_unchecked(0).id, ids.get_unchecked(2));
-    assert_eq!(second.notifications.get_unchecked(1).id, ids.get_unchecked(1));
+    assert_eq!(
+        second.notifications.get_unchecked(0).id,
+        ids.get_unchecked(2)
+    );
+    assert_eq!(
+        second.notifications.get_unchecked(1).id,
+        ids.get_unchecked(1)
+    );
 
     let last = f.client.get_user_notifications(&recipient, &Some(4), &2);
     assert_eq!(last.notifications.len(), 1);
@@ -231,7 +239,9 @@ fn get_user_notifications_limit_is_clamped_to_max_page_size() {
     let recipient = Address::generate(&f.env);
     seed_notifications(&f, &recipient, MAX_PAGE_SIZE + 1);
 
-    let page = f.client.get_user_notifications(&recipient, &Some(0), &10_000);
+    let page = f
+        .client
+        .get_user_notifications(&recipient, &Some(0), &10_000);
     assert_eq!(page.notifications.len() as u64, MAX_PAGE_SIZE);
     assert_eq!(page.total, MAX_PAGE_SIZE + 1);
 }
@@ -262,7 +272,7 @@ fn mark_read_works() {
     assert_eq!(f.client.unread_count(&recipient), 1);
 
     let n = f.client.mark_read(&id, &recipient);
-    assert_eq!(n.read, true);
+    assert!(n.read);
     assert_eq!(f.client.unread_count(&recipient), 0);
 }
 
@@ -356,7 +366,7 @@ fn email_opt_in_defaults_false() {
     let f = setup();
     let user = Address::generate(&f.env);
     let settings = f.client.get_email_opt_in(&user);
-    assert_eq!(settings.email_opt_in, false);
+    assert!(!settings.email_opt_in);
 }
 
 #[test]
@@ -364,8 +374,8 @@ fn set_email_opt_in_true() {
     let f = setup();
     let user = Address::generate(&f.env);
     let settings = f.client.set_email_opt_in(&user, &true);
-    assert_eq!(settings.email_opt_in, true);
-    assert_eq!(f.client.get_email_opt_in(&user).email_opt_in, true);
+    assert!(settings.email_opt_in);
+    assert!(f.client.get_email_opt_in(&user).email_opt_in);
 }
 
 #[test]
@@ -374,7 +384,7 @@ fn set_email_opt_in_false() {
     let user = Address::generate(&f.env);
     f.client.set_email_opt_in(&user, &true);
     let settings = f.client.set_email_opt_in(&user, &false);
-    assert_eq!(settings.email_opt_in, false);
+    assert!(!settings.email_opt_in);
 }
 
 #[test]
@@ -396,8 +406,8 @@ fn email_opt_in_triggers_email_event() {
         &None,
     );
     let n = f.client.get(&id);
-    assert_eq!(n.read, false);
-    assert_eq!(f.client.get_email_opt_in(&recipient).email_opt_in, true);
+    assert!(!n.read);
+    assert!(f.client.get_email_opt_in(&recipient).email_opt_in);
 }
 
 // ---------------------------------------------------------------------------
@@ -459,7 +469,7 @@ fn trade_notification_with_reference_id() {
     let n = f.client.get(&id);
     assert_eq!(n.kind, NotificationKind::Trade);
     assert_eq!(n.reference_id, Some(7));
-    assert_eq!(n.read, false);
+    assert!(!n.read);
 
     // Seller reads the notification.
     f.client.mark_read(&id, &seller);
@@ -544,7 +554,6 @@ fn send_forged_admin_caller_rejected() {
     // caller, so the admin comparison is the gate. An impostor passing the
     // admin's address as `caller` is rejected.
     let f = setup();
-    let stranger = Address::generate(&f.env);
     let recipient = Address::generate(&f.env);
 
     let res = f.client.try_send(

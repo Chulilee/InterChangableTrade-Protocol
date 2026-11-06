@@ -1,6 +1,8 @@
 #![no_std]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, String, Vec, token};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, token, Address, Env, String, Vec,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
@@ -55,6 +57,7 @@ pub enum Error {
     ValidatorNotFound = 7,
     NotTransactionOwner = 8,
     InvalidTransactionState = 9,
+    InvalidAmount = 10,
 }
 
 #[contract]
@@ -74,12 +77,19 @@ impl CrossChainBridge {
             return Err(Error::AlreadyInitialized);
         }
 
-        env.storage().instance().set(&DataKey::Admin, &admin);
-
         let validator_count = validators.len();
         if required_attestations > validator_count {
             return Err(Error::InvalidAttestationThreshold);
         }
+
+        // Fee must be non-negative; otherwise every lock is forced through
+        // with a reduced fee transfer or reverts on underflow.
+        if fee < 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        // All validation passed — from here on the initialize cannot fail.
+        env.storage().instance().set(&DataKey::Admin, &admin);
 
         let state = BridgeState {
             next_transaction_id: 0,
@@ -99,7 +109,9 @@ impl CrossChainBridge {
                 is_active: true,
             });
         }
-        env.storage().instance().set(&DataKey::Validators, &validator_list);
+        env.storage()
+            .instance()
+            .set(&DataKey::Validators, &validator_list);
 
         Ok(())
     }
@@ -149,10 +161,18 @@ impl CrossChainBridge {
             return Err(Error::BridgePaused);
         }
 
-        let fee_token_client = token::Client::new(&env, &asset);
-        fee_token_client.transfer(&user, &state.fee_address, &state.fee);
+        // Reject non-positive amounts and amounts that do not cover the
+        // fee *before* any transfer happens, so a stored transaction never
+        // carries a zero/negative amount and the fee transfer cannot be
+        // stranded by a failing move.
+        if amount <= 0 || amount <= state.fee {
+            return Err(Error::InvalidAmount);
+        }
 
         let amount_after_fee = amount - state.fee;
+
+        let fee_token_client = token::Client::new(&env, &asset);
+        fee_token_client.transfer(&user, &state.fee_address, &state.fee);
 
         let token_client = token::Client::new(&env, &asset);
         token_client.transfer(&user, &env.current_contract_address(), &amount_after_fee);
@@ -177,20 +197,31 @@ impl CrossChainBridge {
         env.storage().instance().set(&DataKey::State, &state);
 
         env.events().publish(
-            (String::from_str(&env, "lock_asset"), transaction.user.clone()),
+            (
+                String::from_str(&env, "lock_asset"),
+                transaction.user.clone(),
+            ),
             (transaction.id, transaction.amount),
         );
 
         Ok(transaction_id)
     }
 
-    pub fn attest_transaction(env: Env, validator: Address, transaction_id: u64) -> Result<(), Error> {
+    pub fn attest_transaction(
+        env: Env,
+        validator: Address,
+        transaction_id: u64,
+    ) -> Result<(), Error> {
         validator.require_auth();
 
         let state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
-        let validators: Vec<Validator> = env.storage().instance().get(&DataKey::Validators).unwrap();
+        let validators: Vec<Validator> =
+            env.storage().instance().get(&DataKey::Validators).unwrap();
 
-        if !validators.iter().any(|v| v.public_key == validator && v.is_active) {
+        if !validators
+            .iter()
+            .any(|v| v.public_key == validator && v.is_active)
+        {
             return Err(Error::NotActiveValidator);
         }
 
@@ -224,7 +255,10 @@ impl CrossChainBridge {
             token_client.mint(&transaction.user, &transaction.amount);
 
             env.events().publish(
-                (String::from_str(&env, "transaction_completed"), transaction.user.clone()),
+                (
+                    String::from_str(&env, "transaction_completed"),
+                    transaction.user.clone(),
+                ),
                 (transaction.id, transaction.amount),
             );
         }
@@ -240,7 +274,8 @@ impl CrossChainBridge {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
-        let mut validators: Vec<Validator> = env.storage().instance().get(&DataKey::Validators).unwrap();
+        let mut validators: Vec<Validator> =
+            env.storage().instance().get(&DataKey::Validators).unwrap();
         if validators.iter().any(|v| v.public_key == new_validator) {
             return Err(Error::ValidatorAlreadyExists);
         }
@@ -253,7 +288,9 @@ impl CrossChainBridge {
         let mut state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
         state.validator_count += 1;
 
-        env.storage().instance().set(&DataKey::Validators, &validators);
+        env.storage()
+            .instance()
+            .set(&DataKey::Validators, &validators);
         env.storage().instance().set(&DataKey::State, &state);
 
         Ok(())
@@ -263,7 +300,8 @@ impl CrossChainBridge {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
-        let mut validators: Vec<Validator> = env.storage().instance().get(&DataKey::Validators).unwrap();
+        let mut validators: Vec<Validator> =
+            env.storage().instance().get(&DataKey::Validators).unwrap();
         let initial_len = validators.len();
 
         let mut kept: Vec<Validator> = Vec::new(&env);
@@ -281,7 +319,9 @@ impl CrossChainBridge {
         let mut state: BridgeState = env.storage().instance().get(&DataKey::State).unwrap();
         state.validator_count -= 1;
 
-        env.storage().instance().set(&DataKey::Validators, &validators);
+        env.storage()
+            .instance()
+            .set(&DataKey::Validators, &validators);
         env.storage().instance().set(&DataKey::State, &state);
 
         Ok(())
@@ -307,11 +347,7 @@ impl CrossChainBridge {
         transaction.status = TransactionStatus::Cancelled;
 
         let token_client = token::Client::new(&env, &transaction.asset);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &user,
-            &transaction.amount,
-        );
+        token_client.transfer(&env.current_contract_address(), &user, &transaction.amount);
 
         env.storage()
             .instance()
