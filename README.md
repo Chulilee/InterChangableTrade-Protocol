@@ -57,6 +57,10 @@ cargo build
 cargo test --workspace
 ```
 
+To deploy to Stellar testnet or mainnet — network configuration, build order,
+initialization arguments and verification — see
+[docs/deployment.md](docs/deployment.md).
+
 ## Related Repositories
 
 - **[InterChangabletrade-fricks](https://github.com/Chulilee/InterChangabletrade-fricks)** —
