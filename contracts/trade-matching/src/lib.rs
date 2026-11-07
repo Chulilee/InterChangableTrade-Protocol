@@ -289,7 +289,7 @@ impl TradeMatching {
 
         let mut matches: Vec<Match> = Vec::new(&env);
 
-        for &other_id in active.iter() {
+        for other_id in active.iter() {
             if other_id == listing_id {
                 continue;
             }
@@ -571,7 +571,8 @@ impl TradeMatching {
         }
 
         // (overlap / total_span) * 30, with integer math.
-        ((overlap * 30_000) / total_span) / 100
+        let scaled = (overlap * 30_000) / total_span / 100;
+        u32::try_from(scaled).unwrap_or(0)
     }
 
     // -- Helpers for proposals per listing ----------------------------------
@@ -621,10 +622,7 @@ impl TradeMatching {
         }
 
         // Replace original.
-        matches.clear();
-        for item in sorted.iter() {
-            matches.push_back(item);
-        }
+        *matches = sorted;
     }
 }
 
