@@ -94,14 +94,26 @@ pub struct MarketOrderBook {
     pub all_orders: Vec<Order>, // All active orders in the market
 }
 
-/// Result of a matching simulation containing all trades that would be executed
+/// Result of a matching operation.
+///
+/// For `match_orders`, `trades` contains the trades executed in this call,
+/// `more_available` indicates that additional crossable liquidity remains and
+/// the caller should invoke `match_orders` again (bounded work per call), and
+/// `remaining_quantity` is reserved for future use (0 for batch matching).
+/// For `simulate_match`, `remaining_quantity` is the incoming order's unfilled
+/// quantity after simulation and `more_available` is `false`.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MatchResult {
     pub trades: Vec<Trade>,
     pub remaining_quantity: i128,
+    pub more_available: bool,
     pub success: bool,
 }
+
+/// Maximum number of trades executed per `match_orders` invocation to bound
+/// work and avoid gas exhaustion on deep books.
+pub const MAX_TRADES_PER_CALL: u32 = 10;
 
 /// Errors surfaced by the matching engine.
 #[contracterror]
@@ -295,7 +307,16 @@ impl MatchingEngine {
 
     /// Batch match orders for a specific market. This is the main matching function
     /// that processes all new orders against the order book and executes trades.
-    pub fn match_orders(env: Env, asset: Address, quote: Address) -> Result<Vec<Trade>, Error> {
+    ///
+    /// Work is bounded to [`MAX_TRADES_PER_CALL`] trades per invocation. If the
+    /// cap is reached while more crossable orders remain, `more_available` is
+    /// set so callers can invoke `match_orders` again to continue (resumable,
+    /// chunked convergence).
+    pub fn match_orders(
+        env: Env,
+        asset: Address,
+        quote: Address,
+    ) -> Result<MatchResult, Error> {
         Self::ensure_init(&env)?;
 
         let market_key = (asset.clone(), quote.clone());
@@ -307,15 +328,22 @@ impl MatchingEngine {
 
         let mut executed_trades = Vec::new(&env);
 
-        // Perform the matching process
-        Self::process_matching(&env, &mut order_book, &mut executed_trades)?;
+        // Perform the matching process with a per-call cap.
+        Self::process_matching(&env, &mut order_book, &mut executed_trades, Some(MAX_TRADES_PER_CALL))?;
+
+        let more_available = Self::has_cross(&order_book);
 
         // Save the updated order book
         env.storage()
             .persistent()
             .set(&DataKey::OrderBook(market_key), &order_book);
 
-        Ok(executed_trades)
+        Ok(MatchResult {
+            trades: executed_trades,
+            remaining_quantity: 0,
+            more_available,
+            success: true,
+        })
     }
 
     /// Simulate matching without modifying any state. Returns the same results as match_orders
@@ -342,9 +370,9 @@ impl MatchingEngine {
         // Add the incoming order to the simulation book
         Self::add_order_to_price_level(&mut simulation_book, incoming_order.clone())?;
 
-        // Process matching on the simulation book
+        // Process matching on the simulation book (no cap for simulation).
         let mut remaining = incoming_order.quantity - incoming_order.filled;
-        Self::process_matching(&env, &mut simulation_book, &mut simulated_trades)?;
+        Self::process_matching(&env, &mut simulation_book, &mut simulated_trades, None)?;
 
         // Calculate remaining quantity after simulation
         for trade in simulated_trades.iter() {
@@ -356,6 +384,7 @@ impl MatchingEngine {
         Ok(MatchResult {
             trades: simulated_trades,
             remaining_quantity: remaining.max(0),
+            more_available: false,
             success: true,
         })
     }
@@ -459,20 +488,41 @@ impl MatchingEngine {
         Ok(())
     }
 
-    /// Core matching logic that processes the order book and executes trades
+    /// Returns true when the best bid can still cross the best ask.
+    fn has_cross(order_book: &MarketOrderBook) -> bool {
+        if order_book.bids.is_empty() || order_book.asks.is_empty() {
+            return false;
+        }
+        let best_bid = order_book.bids.get(0).unwrap();
+        let best_ask = order_book.asks.get(0).unwrap();
+        best_bid.price >= best_ask.price
+    }
+
+    /// Core matching logic that processes the order book and executes trades.
+    ///
+    /// When `max_trades` is `Some(n)`, at most `n` trades are executed in this
+    /// call (bounded work per invocation). Callers can resume by invoking
+    /// `match_orders` again while `has_cross` remains true.
     fn process_matching(
         env: &Env,
         order_book: &mut MarketOrderBook,
         executed_trades: &mut Vec<Trade>,
+        max_trades: Option<u32>,
     ) -> Result<(), Error> {
         let mut trade_id: u64 = env
             .storage()
             .instance()
             .get(&DataKey::NextTradeId)
             .unwrap_or(0);
+        let mut trades_done: u32 = 0;
 
         // Continue matching while there are both bids and asks that can match
         while !order_book.bids.is_empty() && !order_book.asks.is_empty() {
+            if let Some(cap) = max_trades {
+                if trades_done >= cap {
+                    break;
+                }
+            }
             // Get first (best) bid and ask price levels using Soroban's get() method
             let best_bid = order_book.bids.get(0).ok_or(Error::OrderNotFound)?;
             let best_ask = order_book.asks.get(0).ok_or(Error::OrderNotFound)?;
@@ -625,6 +675,7 @@ impl MatchingEngine {
             // Add to executed trades
             executed_trades.push_back(trade);
             trade_id += 1;
+            trades_done += 1;
         }
 
         // Persist the next trade ID counter
