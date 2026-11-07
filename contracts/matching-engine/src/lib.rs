@@ -312,11 +312,7 @@ impl MatchingEngine {
     /// cap is reached while more crossable orders remain, `more_available` is
     /// set so callers can invoke `match_orders` again to continue (resumable,
     /// chunked convergence).
-    pub fn match_orders(
-        env: Env,
-        asset: Address,
-        quote: Address,
-    ) -> Result<MatchResult, Error> {
+    pub fn match_orders(env: Env, asset: Address, quote: Address) -> Result<MatchResult, Error> {
         Self::ensure_init(&env)?;
 
         let market_key = (asset.clone(), quote.clone());
@@ -329,7 +325,12 @@ impl MatchingEngine {
         let mut executed_trades = Vec::new(&env);
 
         // Perform the matching process with a per-call cap.
-        Self::process_matching(&env, &mut order_book, &mut executed_trades, Some(MAX_TRADES_PER_CALL))?;
+        Self::process_matching(
+            &env,
+            &mut order_book,
+            &mut executed_trades,
+            Some(MAX_TRADES_PER_CALL),
+        )?;
 
         let more_available = Self::has_cross(&order_book);
 
