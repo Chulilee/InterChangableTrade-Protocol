@@ -234,9 +234,10 @@ fn matching_engine_to_settlement_flow() {
     );
 
     // 3. Match orders — should execute a single trade.
-    let trades = f.matching.match_orders(&f.base_token, &f.quote_token);
-    assert_eq!(trades.len(), 1);
-    let trade = trades.get(0).unwrap();
+    let match_result = f.matching.match_orders(&f.base_token, &f.quote_token);
+    assert_eq!(match_result.trades.len(), 1);
+    assert!(!match_result.more_available);
+    let trade = match_result.trades.get(0).unwrap();
     assert_eq!(trade.buyer, f.buyer);
     assert_eq!(trade.seller, f.seller);
     assert_eq!(trade.quantity, 10);
@@ -294,9 +295,10 @@ fn matching_engine_partial_fill_then_settlement() {
         &10,
     );
 
-    let trades = f.matching.match_orders(&f.base_token, &f.quote_token);
-    assert_eq!(trades.len(), 1);
-    let trade = trades.get(0).unwrap();
+    let match_result = f.matching.match_orders(&f.base_token, &f.quote_token);
+    assert_eq!(match_result.trades.len(), 1);
+    assert!(!match_result.more_available);
+    let trade = match_result.trades.get(0).unwrap();
     assert_eq!(trade.quantity, 5); // Only 5 matched.
 
     // Settle the matched quantity.
@@ -342,8 +344,9 @@ fn cancelled_order_produces_no_trade() {
         .cancel_order(&f.base_token, &f.quote_token, &buy_id, &f.buyer);
 
     // Matching should produce no trades (only one side remains).
-    let trades = f.matching.match_orders(&f.base_token, &f.quote_token);
-    assert_eq!(trades.len(), 0);
+    let match_result = f.matching.match_orders(&f.base_token, &f.quote_token);
+    assert_eq!(match_result.trades.len(), 0);
+    assert!(!match_result.more_available);
 }
 
 // ---------------------------------------------------------------------------
@@ -403,9 +406,10 @@ fn full_protocol_lifecycle() {
         &200,
         &5,
     );
-    let trades = f.matching.match_orders(&f.base_token, &f.quote_token);
-    assert_eq!(trades.len(), 1);
-    let mt = trades.get(0).unwrap();
+    let match_result = f.matching.match_orders(&f.base_token, &f.quote_token);
+    assert_eq!(match_result.trades.len(), 1);
+    assert!(!match_result.more_available);
+    let mt = match_result.trades.get(0).unwrap();
 
     let settlement2 = f.settlement.open(
         &mt.buyer,
