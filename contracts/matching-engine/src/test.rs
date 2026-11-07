@@ -1,8 +1,9 @@
 #![cfg(test)]
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env,
+    symbol_short,
+    testutils::{Address as _, Events, Ledger},
+    Address, Env, IntoVal,
 };
 
 struct Fixture {
@@ -91,9 +92,10 @@ fn test_single_match() {
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
 
-    let trades = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades.len(), 1);
-    let trade = trades.get(0).unwrap();
+    let result = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result.trades.len(), 1);
+    assert!(!result.more_available);
+    let trade = result.trades.get(0).unwrap();
     assert_eq!(trade.quantity, 5);
     assert_eq!(trade.price, 100);
     assert_eq!(trade.buyer, buyer);
@@ -124,9 +126,10 @@ fn test_partial_fill() {
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &3);
 
-    let trades = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades.len(), 1);
-    assert_eq!(trades.get(0).unwrap().quantity, 3);
+    let result = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result.trades.len(), 1);
+    assert!(!result.more_available);
+    assert_eq!(result.trades.get(0).unwrap().quantity, 3);
 
     let buy_order = f.client.get_order(&f.asset, &f.quote, &buy_id);
     assert_eq!(buy_order.status, OrderStatus::Filled);
@@ -159,10 +162,11 @@ fn test_multi_match() {
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &10);
 
-    let trades = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades.len(), 2);
-    assert_eq!(trades.get(0).unwrap().quantity, 5);
-    assert_eq!(trades.get(1).unwrap().quantity, 5);
+    let result = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result.trades.len(), 2);
+    assert!(!result.more_available);
+    assert_eq!(result.trades.get(0).unwrap().quantity, 5);
+    assert_eq!(result.trades.get(1).unwrap().quantity, 5);
 
     let order1 = f.client.get_order(&f.asset, &f.quote, &sell_id1);
     let order2 = f.client.get_order(&f.asset, &f.quote, &sell_id2);
@@ -193,11 +197,12 @@ fn test_price_time_priority() {
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
 
-    let trades = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades.len(), 1);
+    let result = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result.trades.len(), 1);
+    assert!(!result.more_available);
     // Better-priced sell (99) matches first even though placed later.
-    assert_eq!(trades.get(0).unwrap().maker_order_id, sell_id1);
-    assert_eq!(trades.get(0).unwrap().price, 99);
+    assert_eq!(result.trades.get(0).unwrap().maker_order_id, sell_id1);
+    assert_eq!(result.trades.get(0).unwrap().price, 99);
 
     let better_order = f.client.get_order(&f.asset, &f.quote, &sell_id1);
     assert_eq!(better_order.status, OrderStatus::Filled);
@@ -234,16 +239,17 @@ fn test_simulation_matches_actual() {
     let _buy_id = f
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
-    let actual_trades = f.client.match_orders(&f.asset, &f.quote);
+    let actual = f.client.match_orders(&f.asset, &f.quote);
+    assert!(!actual.more_available);
 
-    assert_eq!(simulation.trades.len(), actual_trades.len());
+    assert_eq!(simulation.trades.len(), actual.trades.len());
     assert_eq!(
         simulation.trades.get(0).unwrap().quantity,
-        actual_trades.get(0).unwrap().quantity
+        actual.trades.get(0).unwrap().quantity
     );
     assert_eq!(
         simulation.trades.get(0).unwrap().price,
-        actual_trades.get(0).unwrap().price
+        actual.trades.get(0).unwrap().price
     );
 }
 
@@ -266,8 +272,9 @@ fn test_cancel_order_removes_from_book() {
     f.env.ledger().set_timestamp(2000);
     f.client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
-    let trades = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades.len(), 0);
+    let result = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result.trades.len(), 0);
+    assert!(!result.more_available);
 }
 
 #[test]
@@ -301,9 +308,10 @@ fn test_trade_ids_unique_across_match_calls() {
     let _buy_id1 = f
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
-    let trades1 = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades1.len(), 1);
-    assert_eq!(trades1.get(0).unwrap().id, 0);
+    let result1 = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result1.trades.len(), 1);
+    assert!(!result1.more_available);
+    assert_eq!(result1.trades.get(0).unwrap().id, 0);
 
     // Second match: trade ID should be 1, not 0
     let _sell_id2 = f
@@ -313,9 +321,10 @@ fn test_trade_ids_unique_across_match_calls() {
     let _buy_id2 = f
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
-    let trades2 = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades2.len(), 1);
-    assert_eq!(trades2.get(0).unwrap().id, 1);
+    let result2 = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result2.trades.len(), 1);
+    assert!(!result2.more_available);
+    assert_eq!(result2.trades.get(0).unwrap().id, 1);
 }
 
 #[test]
@@ -332,9 +341,10 @@ fn test_trade_ids_unique_across_transactions() {
     let _buy_id = f
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
-    let trades1 = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades1.len(), 1);
-    assert_eq!(trades1.get(0).unwrap().id, 0);
+    let result1 = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result1.trades.len(), 1);
+    assert!(!result1.more_available);
+    assert_eq!(result1.trades.get(0).unwrap().id, 0);
 
     // Second transaction: place and match again
     let _sell_id2 = f
@@ -344,9 +354,10 @@ fn test_trade_ids_unique_across_transactions() {
     let _buy_id2 = f
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
-    let trades2 = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades2.len(), 1);
-    assert_eq!(trades2.get(0).unwrap().id, 1);
+    let result2 = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result2.trades.len(), 1);
+    assert!(!result2.more_available);
+    assert_eq!(result2.trades.get(0).unwrap().id, 1);
 }
 
 #[test]
@@ -370,8 +381,89 @@ fn test_trade_ids_unique_multi_fill() {
     let _buy_id = f
         .client
         .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &10);
-    let trades = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(trades.len(), 2);
-    assert_eq!(trades.get(0).unwrap().id, 0);
-    assert_eq!(trades.get(1).unwrap().id, 1);
+    let result = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(result.trades.len(), 2);
+    assert!(!result.more_available);
+    assert_eq!(result.trades.get(0).unwrap().id, 0);
+    assert_eq!(result.trades.get(1).unwrap().id, 1);
+}
+
+#[test]
+fn test_trade_executed_event_contains_counterparties_and_market() {
+    let f = setup();
+    let buyer = Address::generate(&f.env);
+    let seller = Address::generate(&f.env);
+
+    // Sell order rests first (maker).
+    let sell_id = f
+        .client
+        .place_order(&seller, &f.asset, &f.quote, &OrderSide::Sell, &100, &5);
+
+    f.env.ledger().set_timestamp(2000);
+    let buy_id = f
+        .client
+        .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
+
+    f.client.match_orders(&f.asset, &f.quote);
+
+    let events = f.env.events().all();
+    let trade_event = events
+        .iter()
+        .find(|e| {
+            let topics = e.1.clone();
+            topics.len() == 2
+                && topics.get(0).unwrap() == symbol_short!("tradeexec").into_val(&f.env)
+        })
+        .expect("EVT_TRADE_EXECUTED event not found");
+
+    let expected: soroban_sdk::Val = (
+        sell_id,
+        buy_id,
+        seller.clone(),
+        buyer.clone(),
+        (f.asset.clone(), f.quote.clone()),
+        100_i128,
+        5_i128,
+    )
+        .into_val(&f.env);
+    assert_eq!(trade_event.2, expected);
+}
+
+#[test]
+fn test_match_orders_chunked_convergence_respects_cap() {
+    let f = setup();
+    let buyer = Address::generate(&f.env);
+
+    // 15 resting sell orders at the same price, 1 unit each (time priority).
+    for i in 0..15u64 {
+        let seller = Address::generate(&f.env);
+        f.env.ledger().set_timestamp(1000 + i);
+        f.client
+            .place_order(&seller, &f.asset, &f.quote, &OrderSide::Sell, &100, &1);
+    }
+
+    // One crossing buy for 15 units.
+    f.env.ledger().set_timestamp(2000);
+    let buy_id = f
+        .client
+        .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &15);
+
+    // First chunk: bounded by MAX_TRADES_PER_CALL.
+    let first = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(first.trades.len() as u32, MAX_TRADES_PER_CALL);
+    assert!(first.more_available);
+
+    // Second chunk: completes the remainder.
+    let second = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(second.trades.len(), 5);
+    assert!(!second.more_available);
+
+    // Third call: nothing left to match.
+    let third = f.client.match_orders(&f.asset, &f.quote);
+    assert_eq!(third.trades.len(), 0);
+    assert!(!third.more_available);
+
+    let buy_order = f.client.get_order(&f.asset, &f.quote, &buy_id);
+    assert_eq!(buy_order.status, OrderStatus::Filled);
+    assert_eq!(buy_order.filled, 15);
 }

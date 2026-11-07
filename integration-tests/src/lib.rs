@@ -13,8 +13,8 @@
 //!    transfers the assets atomically.
 
 use escrow::{EscrowContract, EscrowContractClient, State};
-use matching_engine::{MatchingEngine, MatchingEngineClient, OrderSide};
 use marketplace::{Marketplace, MarketplaceClient, Status as ListingStatus};
+use matching_engine::{MatchingEngine, MatchingEngineClient, OrderSide};
 use risk_management::{RiskManager, RiskManagerClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
@@ -109,9 +109,9 @@ fn marketplace_escrow_settlement_happy_path() {
     let f = setup();
 
     // 1. Seller lists 10 units of base_token for 100 quote_token.
-    let listing_id = f
-        .marketplace
-        .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
+    let listing_id =
+        f.marketplace
+            .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
     let listing = f.marketplace.get(&listing_id);
     assert_eq!(listing.status, ListingStatus::Open);
 
@@ -167,9 +167,9 @@ fn marketplace_escrow_settlement_happy_path() {
 fn marketplace_escrow_refund_path() {
     let f = setup();
 
-    let listing_id = f
-        .marketplace
-        .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
+    let listing_id =
+        f.marketplace
+            .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
     f.marketplace.fill_listing(&listing_id, &f.buyer);
 
     // Buyer funds escrow.
@@ -196,9 +196,14 @@ fn settlement_fails_on_insufficient_balance() {
     let quote_client = soroban_sdk::token::Client::new(&f.env, &f.quote_token);
     quote_client.mint(&poor_buyer, &50);
 
-    let trade_id = f
-        .settlement
-        .open(&poor_buyer, &f.seller, &f.base_token, &f.quote_token, &10, &100);
+    let trade_id = f.settlement.open(
+        &poor_buyer,
+        &f.seller,
+        &f.base_token,
+        &f.quote_token,
+        &10,
+        &100,
+    );
     let result = f.settlement.settle_trade(&trade_id, &poor_buyer);
     assert_eq!(result.status, SettlementStatus::Failed);
     assert!(result.failure_reason.is_some());
@@ -234,9 +239,10 @@ fn matching_engine_to_settlement_flow() {
     );
 
     // 3. Match orders — should execute a single trade.
-    let trades = f.matching.match_orders(&f.base_token, &f.quote_token);
-    assert_eq!(trades.len(), 1);
-    let trade = trades.get(0).unwrap();
+    let match_result = f.matching.match_orders(&f.base_token, &f.quote_token);
+    assert_eq!(match_result.trades.len(), 1);
+    assert!(!match_result.more_available);
+    let trade = match_result.trades.get(0).unwrap();
     assert_eq!(trade.buyer, f.buyer);
     assert_eq!(trade.seller, f.seller);
     assert_eq!(trade.quantity, 10);
@@ -266,7 +272,9 @@ fn matching_engine_to_settlement_flow() {
 
     // 6. Verify orders are marked Filled.
     let buy_order = f.matching.get_order(&f.base_token, &f.quote_token, &buy_id);
-    let sell_order = f.matching.get_order(&f.base_token, &f.quote_token, &sell_id);
+    let sell_order = f
+        .matching
+        .get_order(&f.base_token, &f.quote_token, &sell_id);
     assert_eq!(buy_order.status, matching_engine::OrderStatus::Filled);
     assert_eq!(sell_order.status, matching_engine::OrderStatus::Filled);
 }
@@ -294,9 +302,10 @@ fn matching_engine_partial_fill_then_settlement() {
         &10,
     );
 
-    let trades = f.matching.match_orders(&f.base_token, &f.quote_token);
-    assert_eq!(trades.len(), 1);
-    let trade = trades.get(0).unwrap();
+    let match_result = f.matching.match_orders(&f.base_token, &f.quote_token);
+    assert_eq!(match_result.trades.len(), 1);
+    assert!(!match_result.more_available);
+    let trade = match_result.trades.get(0).unwrap();
     assert_eq!(trade.quantity, 5); // Only 5 matched.
 
     // Settle the matched quantity.
@@ -342,8 +351,9 @@ fn cancelled_order_produces_no_trade() {
         .cancel_order(&f.base_token, &f.quote_token, &buy_id, &f.buyer);
 
     // Matching should produce no trades (only one side remains).
-    let trades = f.matching.match_orders(&f.base_token, &f.quote_token);
-    assert_eq!(trades.len(), 0);
+    let match_result = f.matching.match_orders(&f.base_token, &f.quote_token);
+    assert_eq!(match_result.trades.len(), 0);
+    assert!(!match_result.more_available);
 }
 
 // ---------------------------------------------------------------------------
@@ -357,9 +367,9 @@ fn full_protocol_lifecycle() {
     let f = setup();
 
     // --- Phase 1: Marketplace path ---
-    let listing_id = f
-        .marketplace
-        .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
+    let listing_id =
+        f.marketplace
+            .create_listing(&f.seller, &f.base_token, &f.quote_token, &10, &100);
     f.marketplace.fill_listing(&listing_id, &f.buyer);
     f.escrow
         .fund(&10u64, &f.buyer, &f.seller, &f.quote_token, &100);
@@ -403,9 +413,10 @@ fn full_protocol_lifecycle() {
         &200,
         &5,
     );
-    let trades = f.matching.match_orders(&f.base_token, &f.quote_token);
-    assert_eq!(trades.len(), 1);
-    let mt = trades.get(0).unwrap();
+    let match_result = f.matching.match_orders(&f.base_token, &f.quote_token);
+    assert_eq!(match_result.trades.len(), 1);
+    assert!(!match_result.more_available);
+    let mt = match_result.trades.get(0).unwrap();
 
     let settlement2 = f.settlement.open(
         &mt.buyer,
