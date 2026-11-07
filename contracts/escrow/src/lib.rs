@@ -15,6 +15,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
+    Vec,
 };
 
 /// Storage keys for the escrow.
@@ -47,6 +48,9 @@ pub struct Escrow {
     pub state: State,
 }
 
+/// Maximum number of escrows that can be released or refunded in a single batch.
+pub const MAX_BATCH_SIZE: u32 = 20;
+
 /// Errors surfaced by the escrow.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -56,6 +60,8 @@ pub enum Error {
     EscrowNotFound = 2,
     InvalidAmount = 3,
     NotFunded = 4,
+    InvalidBatch = 5,
+    BatchTooLarge = 6,
 }
 
 const EVT_FUNDED: Symbol = symbol_short!("funded");
@@ -157,6 +163,60 @@ impl EscrowContract {
         env.events()
             .publish((EVT_REFUNDED, trade_id), escrow.clone());
         Ok(escrow)
+    }
+
+    /// Release multiple escrowed funds to their respective sellers in a single atomic invocation.
+    ///
+    /// # Failure Policy (Strict-All):
+    /// Enforces strict-all atomic execution. If any trade in the batch fails validation
+    /// (e.g. escrow not found, not funded, or unauthorized), the entire batch reverts,
+    /// ensuring no partial transfers or inconsistent states occur.
+    ///
+    /// # Batch Limits:
+    /// Rejects empty batches with [`Error::InvalidBatch`] and batches exceeding [`MAX_BATCH_SIZE`]
+    /// with [`Error::BatchTooLarge`].
+    pub fn release_batch(env: Env, trade_ids: Vec<u64>) -> Result<u32, Error> {
+        let len = trade_ids.len();
+        if len == 0 {
+            return Err(Error::InvalidBatch);
+        }
+        if len > MAX_BATCH_SIZE {
+            return Err(Error::BatchTooLarge);
+        }
+
+        let mut count: u32 = 0;
+        for trade_id in trade_ids.iter() {
+            Self::release(env.clone(), trade_id)?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// Refund multiple escrowed funds to their respective buyers in a single atomic invocation.
+    ///
+    /// # Failure Policy (Strict-All):
+    /// Enforces strict-all atomic execution. If any trade in the batch fails validation
+    /// (e.g. escrow not found, not funded, or unauthorized), the entire batch reverts,
+    /// ensuring no partial refunds or inconsistent states occur.
+    ///
+    /// # Batch Limits:
+    /// Rejects empty batches with [`Error::InvalidBatch`] and batches exceeding [`MAX_BATCH_SIZE`]
+    /// with [`Error::BatchTooLarge`].
+    pub fn refund_batch(env: Env, trade_ids: Vec<u64>) -> Result<u32, Error> {
+        let len = trade_ids.len();
+        if len == 0 {
+            return Err(Error::InvalidBatch);
+        }
+        if len > MAX_BATCH_SIZE {
+            return Err(Error::BatchTooLarge);
+        }
+
+        let mut count: u32 = 0;
+        for trade_id in trade_ids.iter() {
+            Self::refund(env.clone(), trade_id)?;
+            count += 1;
+        }
+        Ok(count)
     }
 
     /// Fetch an escrow by trade id.
