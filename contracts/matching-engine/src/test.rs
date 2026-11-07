@@ -1,8 +1,9 @@
 #![cfg(test)]
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env,
+    symbol_short,
+    testutils::{Address as _, Events, Ledger},
+    Address, Env, IntoVal,
 };
 
 struct Fixture {
@@ -374,4 +375,45 @@ fn test_trade_ids_unique_multi_fill() {
     assert_eq!(trades.len(), 2);
     assert_eq!(trades.get(0).unwrap().id, 0);
     assert_eq!(trades.get(1).unwrap().id, 1);
+}
+
+#[test]
+fn test_trade_executed_event_contains_counterparties_and_market() {
+    let f = setup();
+    let buyer = Address::generate(&f.env);
+    let seller = Address::generate(&f.env);
+
+    // Sell order rests first (maker).
+    let sell_id = f
+        .client
+        .place_order(&seller, &f.asset, &f.quote, &OrderSide::Sell, &100, &5);
+
+    f.env.ledger().set_timestamp(2000);
+    let buy_id = f
+        .client
+        .place_order(&buyer, &f.asset, &f.quote, &OrderSide::Buy, &100, &5);
+
+    f.client.match_orders(&f.asset, &f.quote);
+
+    let events = f.env.events().all();
+    let trade_event = events
+        .iter()
+        .find(|e| {
+            let topics = e.1.clone();
+            topics.len() == 2
+                && topics.get(0).unwrap() == symbol_short!("tradeexec").into_val(&f.env)
+        })
+        .expect("EVT_TRADE_EXECUTED event not found");
+
+    let expected: soroban_sdk::Val = (
+        sell_id,
+        buy_id,
+        seller.clone(),
+        buyer.clone(),
+        (f.asset.clone(), f.quote.clone()),
+        100_i128,
+        5_i128,
+    )
+        .into_val(&f.env);
+    assert_eq!(trade_event.2, expected);
 }

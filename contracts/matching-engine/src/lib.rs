@@ -65,6 +65,8 @@ pub struct Trade {
     pub id: u64,
     pub maker_order_id: u64,
     pub taker_order_id: u64,
+    pub maker: Address,
+    pub taker: Address,
     pub buyer: Address,
     pub seller: Address,
     pub asset: Address,
@@ -513,18 +515,23 @@ impl MatchingEngine {
             };
 
             // Create and execute the trade
+            let bid_is_maker = bid_order.timestamp < ask_order.timestamp;
+            let (maker_order_id, taker_order_id) = if bid_is_maker {
+                (bid_order.id, ask_order.id)
+            } else {
+                (ask_order.id, bid_order.id)
+            };
+            let (maker, taker) = if bid_is_maker {
+                (bid_order.trader.clone(), ask_order.trader.clone())
+            } else {
+                (ask_order.trader.clone(), bid_order.trader.clone())
+            };
             let trade = Trade {
                 id: trade_id,
-                maker_order_id: if bid_order.timestamp < ask_order.timestamp {
-                    bid_order.id
-                } else {
-                    ask_order.id
-                },
-                taker_order_id: if bid_order.timestamp < ask_order.timestamp {
-                    ask_order.id
-                } else {
-                    bid_order.id
-                },
+                maker_order_id,
+                taker_order_id,
+                maker,
+                taker,
                 buyer: if bid_order.side == OrderSide::Buy {
                     bid_order.trader.clone()
                 } else {
@@ -634,17 +641,24 @@ impl MatchingEngine {
     /// event that the settlement layer consumes to move funds.
     ///
     /// The matching engine deliberately does not move tokens itself: it matches
-    /// orders and publishes an unambiguous trade record (price, quantity, both
-    /// counterparties), while the `trade-settlement` contract in this workspace
-    /// performs the atomic `token::Client` transfers that settle it. Keeping
-    /// matching and settlement separate keeps the match logic stateless with
-    /// respect to balances and lets settlement batch/net trades.
+    /// orders and publishes an unambiguous trade record (price, quantity, maker
+    /// and taker addresses, and the market key), while the `trade-settlement`
+    /// contract in this workspace performs the atomic `token::Client` transfers
+    /// that settle it. Keeping matching and settlement separate keeps the match
+    /// logic stateless with respect to balances and lets settlement batch/net
+    /// trades.
+    ///
+    /// Event payload: `(maker_order_id, taker_order_id, maker, taker,
+    /// (asset, quote), price, quantity)`.
     fn record_trade_execution(env: &Env, trade: &Trade) {
         env.events().publish(
             (EVT_TRADE_EXECUTED, trade.id),
             (
                 trade.maker_order_id,
                 trade.taker_order_id,
+                trade.maker.clone(),
+                trade.taker.clone(),
+                (trade.asset.clone(), trade.quote.clone()),
                 trade.price,
                 trade.quantity,
             ),
