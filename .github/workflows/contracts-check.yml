@@ -8,33 +8,37 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  discover:
-    # Derive the crate list from the repository layout so a missing matrix
-    # entry (like notification / cross-chain-bridge once were) fails loudly
-    # instead of silently skipping CI coverage for a crate.
-    runs-on: ubuntu-latest
-    outputs:
-      contracts: ${{ steps.list.outputs.contracts }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Discover contract crates
-        id: list
-        run: |
-          set -euo pipefail
-          contracts=$(find contracts -mindepth 2 -maxdepth 2 -name Cargo.toml -printf '%h\n' \
-            | xargs -n1 basename | sort | jq -R -s -c 'split("\n")[:-1]')
-          echo "contracts=$contracts" >> "$GITHUB_OUTPUT"
-          echo "Discovered crates: $contracts"
-
+  # NOTE: the matrix is intentionally static. A dynamically discovered matrix
+  # (`fromJSON(needs.discover.outputs.contracts)`) was tried in #82 and every
+  # run since then has startup-failed in ~0s with no jobs or logs — GitHub
+  # rejected the workflow at evaluation time. Keep this list in sync with
+  # `find contracts -mindepth 2 -maxdepth 2 -name Cargo.toml` when adding a
+  # contract; a missing entry fails loudly in review, a dynamic matrix failed
+  # silently in CI.
   check-contracts:
-    needs: discover
     runs-on: ubuntu-latest
     defaults:
       working-directory: contracts
     strategy:
+      fail-fast: false
       matrix:
-        contract: ${{ fromJSON(needs.discover.outputs.contracts) }}
+        contract:
+          - access-control
+          - asset-registry
+          - cross-chain-bridge
+          - escrow
+          - fee-commission
+          - governance
+          - liquidity-incentives
+          - margining-liquidation
+          - marketplace
+          - matching-engine
+          - notification
+          - orderbook
+          - price-oracle
+          - risk-management
+          - trade-matching
+          - trade-settlement
 
     steps:
       - uses: actions/checkout@v4
