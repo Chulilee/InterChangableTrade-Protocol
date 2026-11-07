@@ -8,17 +8,18 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  # NOTE: the matrix is intentionally static. A dynamically discovered matrix
-  # (`fromJSON(needs.discover.outputs.contracts)`) was tried in #82 and every
-  # run since then has startup-failed in ~0s with no jobs or logs — GitHub
-  # rejected the workflow at evaluation time. Keep this list in sync with
-  # `find contracts -mindepth 2 -maxdepth 2 -name Cargo.toml` when adding a
-  # contract; a missing entry fails loudly in review, a dynamic matrix failed
-  # silently in CI.
+  # NOTE: the matrix is static by design to keep the workflow trivially
+  # evaluable. The real, historical cause of the zero-job startup failures
+  # was a malformed `defaults:` block (`working-directory:` directly under
+  # `defaults` instead of `defaults.run.working-directory`), which made
+  # GitHub reject the workflow at evaluation time since October 2026. Keep
+  # this list in sync with `find contracts -mindepth 2 -maxdepth 2
+  # -name Cargo.toml` when adding a contract.
   check-contracts:
     runs-on: ubuntu-latest
     defaults:
-      working-directory: contracts
+      run:
+        working-directory: contracts
     strategy:
       fail-fast: false
       matrix:
