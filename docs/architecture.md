@@ -73,6 +73,17 @@ for reference; `matching-engine` is the canonical order book going forward.
 - Units: fees use basis points (`10_000 bps = 100%`); margin ratios and reward
   accumulators use 18-decimal fixed point (`1e18`).
 
+## Decision records
+
+The significant architectural decisions behind this design are recorded in
+[docs/adr/](adr/README.md):
+
+- [ADR-001](adr/ADR-001-why-soroban-for-smart-contracts.md) — why Soroban for the contracts
+- [ADR-002](adr/ADR-002-why-one-contract-per-module.md) — why one contract per module
+- [ADR-003](adr/ADR-003-why-settlement-and-escrow-are-separate.md) — why settlement and escrow are separate (and the duplicated settlement paths tracked in the gaps above)
+- [ADR-004](adr/ADR-004-why-matching-engine-replaced-orderbook.md) — why the matching engine is canonical and `orderbook` is legacy
+- [ADR-005](adr/ADR-005-why-basis-points-for-fee-calculation.md) — why fees and ratios use basis points / 1e18 fixed point
+
 ## Open integration gaps
 
 The contracts above are individually functional but not yet wired
