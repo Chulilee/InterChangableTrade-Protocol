@@ -63,6 +63,8 @@ pub enum Error {
     ListingNotOpen = 4,
     InvalidAmount = 5,
     NotSeller = 6,
+    SelfFill = 7,
+    RiskManagerNotConfigured = 8,
 }
 
 const EVT_LISTED: Symbol = symbol_short!("listed");
@@ -76,6 +78,7 @@ pub struct Marketplace;
 impl Marketplace {
     /// Initialize the marketplace with an admin. Callable once.
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
@@ -111,7 +114,7 @@ impl Marketplace {
 
         // Validate against the risk-management contract before recording the
         // listing. This reverts the call if the risk contract rejects the order.
-        Self::check_risk(&env, amount, &seller);
+        Self::check_risk(&env, amount, &seller)?;
 
         let id: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(0);
         let listing = Listing {
@@ -140,7 +143,10 @@ impl Marketplace {
         if listing.status != Status::Open {
             return Err(Error::ListingNotOpen);
         }
-        Self::check_risk(&env, listing.amount, &buyer);
+        if listing.seller == buyer {
+            return Err(Error::SelfFill);
+        }
+        Self::check_risk(&env, listing.amount, &buyer)?;
 
         listing.status = Status::Filled;
         env.storage()
@@ -191,13 +197,18 @@ impl Marketplace {
     /// client so the marketplace WASM does not link (and re-export) the
     /// risk-management contract. If the risk contract returns an error the
     /// host traps, reverting the calling invocation.
-    fn check_risk(env: &Env, amount: i128, trader: &Address) {
-        let rm: Address = env.storage().instance().get(&DataKey::RiskManager).unwrap();
+    fn check_risk(env: &Env, amount: i128, trader: &Address) -> Result<(), Error> {
+        let rm: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::RiskManager)
+            .ok_or(Error::RiskManagerNotConfigured)?;
         env.invoke_contract::<()>(
             &rm,
             &Symbol::new(env, "check_limits"),
             (amount, trader.clone()).into_val(env),
         );
+        Ok(())
     }
 }
 
