@@ -122,7 +122,7 @@ fn test_deposit_and_withdraw_collateral() {
 
     f.client.withdraw_collateral(&user, &asset, &400);
     let account = f.client.get_margin_account(&user);
-    assert_eq!(account.collateral_balances.get(asset).unwrap(), 600);
+    assert_eq!(account.collateral_balances.get(asset.clone()).unwrap(), 600);
     // Tokens moved back from the contract to the user.
     assert_eq!(token_client.balance(&user), 400);
     assert_eq!(token_client.balance(&f.contract_id), 600);
@@ -148,7 +148,7 @@ fn test_open_and_close_position() {
     let f = setup();
     let user = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
+    let (_quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
     f.set_price(&quote, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &quote, &200);
@@ -263,7 +263,7 @@ fn test_liquidation_pays_collateral_and_incentive_to_liquidator() {
 
     // User's collateral is fully seized and cannot be withdrawn.
     let account = f.client.get_margin_account(&user);
-    assert_eq!(account.collateral_balances.get(quote), Some(0));
+    assert_eq!(account.collateral_balances.get(quote.clone()), Some(0));
     let res = f.client.try_withdraw_collateral(&user, &quote, &1);
     assert_eq!(res, Err(Ok(Error::InsufficientCollateral)));
 
@@ -365,7 +365,7 @@ fn test_oracle_price_drives_margin_health() {
     let f = setup();
     let user = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
+    let (_quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
     f.set_price(&quote, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &quote, &200);
@@ -407,7 +407,7 @@ fn test_withdraw_collateral_below_maintenance_margin_fails() {
     // Withdrawing down to exactly the maintenance threshold is allowed.
     f.client.withdraw_collateral(&user, &quote, &150);
     let account = f.client.get_margin_account(&user);
-    assert_eq!(account.collateral_balances.get(quote), Some(50));
+    assert_eq!(account.collateral_balances.get(quote.clone()), Some(50));
     assert_eq!(quote_client.balance(&user), 150);
     assert_eq!(quote_client.balance(&f.contract_id), 50);
     assert_eq!(f.client.escrowed_collateral(&quote), 50);

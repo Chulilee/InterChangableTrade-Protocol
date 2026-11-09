@@ -27,7 +27,6 @@ use trade_settlement::{SettlementStatus, TradeSettlement, TradeSettlementClient}
 /// into a single environment.
 struct ProtocolFixture {
     env: Env,
-    admin: Address,
     seller: Address,
     buyer: Address,
     base_token: Address,
@@ -87,7 +86,6 @@ fn setup() -> ProtocolFixture {
 
     ProtocolFixture {
         env,
-        admin,
         seller,
         buyer,
         base_token,

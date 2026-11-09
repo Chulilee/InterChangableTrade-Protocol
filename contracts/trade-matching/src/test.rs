@@ -487,7 +487,7 @@ fn test_suggest_matches_returns_ranked() {
         &180,
     );
 
-    // Listing C: low match (different category, no shared tags, no price overlap)
+    // Listing C: low match (same category → 40 points, no shared tags, no price overlap)
     let _id_c = f.client.register_listing(
         &3,
         &seller_c,
@@ -496,7 +496,7 @@ fn test_suggest_matches_returns_ranked() {
             t.push_back(symbol_short!("food"));
             t
         },
-        &symbol_short!("meal"),
+        &symbol_short!("tech"),
         &500,
         &600,
     );

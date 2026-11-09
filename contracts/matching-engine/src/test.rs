@@ -458,7 +458,7 @@ fn test_match_orders_chunked_convergence_respects_cap() {
 
     // First chunk: bounded by MAX_TRADES_PER_CALL.
     let first = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(first.trades.len() as u32, MAX_TRADES_PER_CALL);
+    assert_eq!(first.trades.len(), MAX_TRADES_PER_CALL);
     assert!(first.more_available);
 
     // Second chunk: completes the remainder.

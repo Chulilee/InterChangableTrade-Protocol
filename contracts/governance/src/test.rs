@@ -195,7 +195,7 @@ fn cast_vote_preserves_order_when_updating() {
 
     // Verify voter2's updated vote
     let voter2_vote = votes_after.iter().find(|v| v.voter == voter2).unwrap();
-    assert_eq!(voter2_vote.support, true);
+    assert!(voter2_vote.support);
     assert_eq!(voter2_vote.weight, 250);
 }
 
@@ -229,7 +229,7 @@ fn cast_vote_updates_count_correctly() {
     let votes = client.get_votes(&proposal_id);
     assert_eq!(votes.len(), 1);
     assert_eq!(votes.get(0).unwrap().weight, 200);
-    assert_eq!(votes.get(0).unwrap().support, false);
+    assert!(!votes.get(0).unwrap().support);
 
     // Update vote with same values (should not change anything)
     client.cast_vote(&proposal_id, &voter, &false, &200);

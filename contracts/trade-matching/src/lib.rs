@@ -512,9 +512,8 @@ impl TradeMatching {
             return 0;
         }
 
-        // Use integer math: (intersection * 30 * 100) / (union * 100)
-        // to avoid floats. Scale to percentage first.
-        ((intersection * 30_000) / union_count) / 100
+        // Jaccard scaled to 30 points using integer math.
+        (intersection * 30) / union_count
     }
 
     /// Count the number of tags in the intersection of two listings' tag sets.
@@ -571,7 +570,7 @@ impl TradeMatching {
         }
 
         // (overlap / total_span) * 30, with integer math.
-        let scaled = (overlap * 30_000) / total_span / 100;
+        let scaled = (overlap * 30) / total_span;
         u32::try_from(scaled).unwrap_or(0)
     }
 
