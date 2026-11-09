@@ -145,6 +145,7 @@ pub struct MatchingEngine;
 impl MatchingEngine {
     /// Initialize the matching engine with an admin. Callable once.
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }

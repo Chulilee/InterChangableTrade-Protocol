@@ -133,6 +133,7 @@ impl NotificationService {
 
     /// One-time initialization. Sets the admin who may send notifications.
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }

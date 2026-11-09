@@ -166,6 +166,7 @@ impl TradeMatching {
 
     /// Initialize the contract with an admin. Callable once.
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
