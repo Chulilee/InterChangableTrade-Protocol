@@ -37,6 +37,7 @@ pub struct AccessControl;
 #[contractimpl]
 impl AccessControl {
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }

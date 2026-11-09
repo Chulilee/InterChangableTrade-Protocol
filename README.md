@@ -61,6 +61,11 @@ To deploy to Stellar testnet or mainnet — network configuration, build order,
 initialization arguments and verification — see
 [docs/deployment.md](docs/deployment.md).
 
+For a status snapshot (what is ready, what is not, and what to do before a
+contributor sprint), see [docs/DRIPS_WAVE_READINESS.md](docs/DRIPS_WAVE_READINESS.md).
+For onboarding contributors and the initial Wave shortlist, see
+[docs/DRIPS_WAVE.md](docs/DRIPS_WAVE.md).
+
 ## Related Repositories
 
 - **[InterChangabletrade-fricks](https://github.com/Chulilee/InterChangabletrade-fricks)** —

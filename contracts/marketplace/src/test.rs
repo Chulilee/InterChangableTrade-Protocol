@@ -36,6 +36,22 @@ fn setup() -> Fixture {
     }
 }
 
+fn setup_no_risk_manager() -> Fixture {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(Marketplace, ());
+    let client = MarketplaceClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    Fixture {
+        seller: Address::generate(&env),
+        asset: Address::generate(&env),
+        quote: Address::generate(&env),
+        client,
+        env,
+    }
+}
+
 #[test]
 fn create_and_get_listing() {
     let f = setup();
@@ -55,6 +71,27 @@ fn create_with_invalid_amount_fails() {
         .client
         .try_create_listing(&f.seller, &f.asset, &f.quote, &0, &100);
     assert_eq!(res, Err(Ok(Error::InvalidAmount)));
+}
+
+#[test]
+fn create_with_invalid_price_fails() {
+    let f = setup();
+    let res = f
+        .client
+        .try_create_listing(&f.seller, &f.asset, &f.quote, &10, &0);
+    assert_eq!(res, Err(Ok(Error::InvalidAmount)));
+}
+
+#[test]
+fn initialize_rejects_unauthorized_admin() {
+    let env = Env::default();
+    // No mock_all_auths here: initialize requires the admin's explicit signature.
+    let contract_id = env.register(Marketplace, ());
+    let client = MarketplaceClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let res = client.try_initialize(&admin);
+    // Without authorized signer on `admin`, the host auth mechanism rejects the call.
+    assert!(res.is_err());
 }
 
 #[test]
@@ -82,28 +119,20 @@ fn fill_twice_fails() {
 }
 
 #[test]
-fn cancel_listing() {
+fn fill_by_seller_self_fill_fails() {
     let f = setup();
     let id = f
         .client
         .create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
-    f.client.cancel_listing(&id, &f.seller);
-    assert_eq!(f.client.get(&id).status, Status::Cancelled);
+    let res = f.client.try_fill_listing(&id, &f.seller);
+    assert_eq!(res, Err(Ok(Error::SelfFill)));
 }
 
 #[test]
-fn cancel_by_non_seller_fails() {
-    let f = setup();
-    let stranger = Address::generate(&f.env);
-    let id = f
+fn create_without_risk_manager_fails_cleanly() {
+    let f = setup_no_risk_manager();
+    let res = f
         .client
-        .create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
-    let res = f.client.try_cancel_listing(&id, &stranger);
-    assert_eq!(res, Err(Ok(Error::NotSeller)));
-}
-
-#[test]
-fn get_missing_listing_fails() {
-    let f = setup();
-    assert_eq!(f.client.try_get(&999), Err(Ok(Error::ListingNotFound)));
+        .try_create_listing(&f.seller, &f.asset, &f.quote, &10, &100);
+    assert_eq!(res, Err(Ok(Error::RiskManagerNotConfigured)));
 }

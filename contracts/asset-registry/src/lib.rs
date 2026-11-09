@@ -55,6 +55,7 @@ pub struct AssetRegistry;
 impl AssetRegistry {
     /// Initialize the registry with an admin. Callable once.
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }

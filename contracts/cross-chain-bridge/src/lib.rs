@@ -73,6 +73,7 @@ impl CrossChainBridge {
         fee: i128,
         fee_address: Address,
     ) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::State) {
             return Err(Error::AlreadyInitialized);
         }

@@ -140,6 +140,7 @@ pub struct LiquidityIncentives;
 impl LiquidityIncentives {
     /// Initialize the module with an admin (governance) address. Callable once.
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
