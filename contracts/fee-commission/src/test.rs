@@ -284,6 +284,39 @@ fn test_set_recipients_bad_shares_fails() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #10)")]
+fn test_set_recipients_duplicate_address_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin) = setup(&env);
+    let r1 = Address::generate(&env);
+    client.set_recipients(&vec![
+        &env,
+        FeeRecipient {
+            address: r1.clone(),
+            share_bps: 6_000,
+        },
+        FeeRecipient {
+            address: r1,
+            share_bps: 4_000,
+        },
+    ]);
+}
+
+#[test]
+fn test_calculate_fees_overflow_returns_typed_error() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin) = setup(&env);
+    let payer = Address::generate(&env);
+    // i128::MAX * 20 bps exceeds i128. The unchecked math would wrap; the
+    // checked path surfaces the typed error.
+    let amount: i128 = i128::MAX;
+    let res = client.try_calculate_fees(&payer, &amount, &Side::Taker);
+    assert_eq!(res, Err(Ok(Error::InvalidFee)));
+}
+
+#[test]
 fn test_set_fees_updates_config() {
     let env = Env::default();
     env.mock_all_auths();

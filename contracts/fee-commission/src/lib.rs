@@ -117,6 +117,8 @@ pub enum Error {
     NotYetActive = 8,
     /// Fee recipients have not been configured.
     NoRecipients = 9,
+    /// A recipient address appeared more than once in the list.
+    DuplicateRecipient = 10,
 }
 
 const EVT_FEE_COLLECTED: Symbol = symbol_short!("feecollct");
@@ -140,6 +142,7 @@ impl FeeCommission {
         protocol_fee_bps: i128,
         protocol_treasury: Address,
     ) -> Result<(), Error> {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
@@ -180,7 +183,8 @@ impl FeeCommission {
             Side::Maker => config.maker_fee_bps,
             Side::Taker => config.taker_fee_bps,
         };
-        Ok(amount * fee_bps / BPS_DENOMINATOR)
+        let product = amount.checked_mul(fee_bps).ok_or(Error::InvalidFee)?;
+        Ok(product / BPS_DENOMINATOR)
     }
 
     /// Collect the trading fee for `amount` from `payer` on the given `side`.
@@ -441,6 +445,17 @@ impl FeeCommission {
                 return Err(Error::InvalidShares);
             }
             sum += r.share_bps;
+        }
+        // Reject duplicate recipient addresses: a single address listed twice
+        // would receive its share twice (double payout).
+        for i in 0..recipients.len() {
+            let r = recipients.get(i).ok_or(Error::InvalidShares)?;
+            for j in 0..i {
+                let other = recipients.get(j).ok_or(Error::InvalidShares)?;
+                if other.address == r.address {
+                    return Err(Error::DuplicateRecipient);
+                }
+            }
         }
         if sum != BPS_DENOMINATOR {
             return Err(Error::InvalidShares);
