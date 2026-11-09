@@ -3,7 +3,7 @@ use super::*;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    Address, Env, IntoVal,
+    Address, Env, TryIntoVal,
 };
 
 struct Fixture {
@@ -411,12 +411,19 @@ fn test_trade_executed_event_contains_counterparties_and_market() {
         .iter()
         .find(|e| {
             let topics = e.1.clone();
-            topics.len() == 2
-                && topics.get(0).unwrap() == symbol_short!("tradeexec").into_val(&f.env)
+            if topics.len() != 2 {
+                return false;
+            }
+            let topic0: soroban_sdk::Symbol = topics
+                .get(0)
+                .unwrap()
+                .try_into_val(&f.env)
+                .expect("topic 0 is not a symbol");
+            topic0 == symbol_short!("tradeexec")
         })
         .expect("EVT_TRADE_EXECUTED event not found");
 
-    let expected: soroban_sdk::Val = (
+    let expected: (u64, u64, Address, Address, (Address, Address), i128, i128) = (
         sell_id,
         buy_id,
         seller.clone(),
@@ -424,9 +431,10 @@ fn test_trade_executed_event_contains_counterparties_and_market() {
         (f.asset.clone(), f.quote.clone()),
         100_i128,
         5_i128,
-    )
-        .into_val(&f.env);
-    assert_eq!(trade_event.2, expected);
+    );
+    let emitted: (u64, u64, Address, Address, (Address, Address), i128, i128) =
+        trade_event.2.try_into_val(&f.env).unwrap();
+    assert_eq!(emitted, expected);
 }
 
 #[test]
@@ -450,7 +458,7 @@ fn test_match_orders_chunked_convergence_respects_cap() {
 
     // First chunk: bounded by MAX_TRADES_PER_CALL.
     let first = f.client.match_orders(&f.asset, &f.quote);
-    assert_eq!(first.trades.len() as u32, MAX_TRADES_PER_CALL);
+    assert_eq!(first.trades.len(), MAX_TRADES_PER_CALL);
     assert!(first.more_available);
 
     // Second chunk: completes the remainder.

@@ -551,13 +551,14 @@ fn send_requires_caller_auth() {
 #[test]
 fn send_forged_admin_caller_rejected() {
     // With mock_all_auths (the fixture default), require_auth passes for any
-    // caller, so the admin comparison is the gate. An impostor passing the
-    // admin's address as `caller` is rejected.
+    // caller, so the admin comparison is the gate; an impostor passing their
+    // own address as `caller` is rejected.
     let f = setup();
+    let impostor = Address::generate(&f.env);
     let recipient = Address::generate(&f.env);
 
     let res = f.client.try_send(
-        &f.admin,
+        &impostor,
         &recipient,
         &NotificationKind::System,
         &symbol_short!("forged"),

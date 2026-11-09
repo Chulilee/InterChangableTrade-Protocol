@@ -1,7 +1,11 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Ledger},
+    Address, Env,
+};
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -10,7 +14,6 @@ use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};
 struct Fixture {
     env: Env,
     client: TradeMatchingClient<'static>,
-    admin: Address,
 }
 
 fn setup() -> Fixture {
@@ -24,7 +27,7 @@ fn setup() -> Fixture {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    Fixture { env, client, admin }
+    Fixture { env, client }
 }
 
 // ---------------------------------------------------------------------------
@@ -484,7 +487,7 @@ fn test_suggest_matches_returns_ranked() {
         &180,
     );
 
-    // Listing C: low match (different category, no shared tags, no price overlap)
+    // Listing C: low match (same category → 40 points, no shared tags, no price overlap)
     let _id_c = f.client.register_listing(
         &3,
         &seller_c,
@@ -493,7 +496,7 @@ fn test_suggest_matches_returns_ranked() {
             t.push_back(symbol_short!("food"));
             t
         },
-        &symbol_short!("meal"),
+        &symbol_short!("tech"),
         &500,
         &600,
     );

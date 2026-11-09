@@ -27,7 +27,6 @@ use trade_settlement::{SettlementStatus, TradeSettlement, TradeSettlementClient}
 /// into a single environment.
 struct ProtocolFixture {
     env: Env,
-    admin: Address,
     seller: Address,
     buyer: Address,
     base_token: Address,
@@ -40,7 +39,8 @@ struct ProtocolFixture {
 
 /// Deploy a Stellar Asset Contract token and mint `amount` to `owner`.
 fn create_token(env: &Env, admin: &Address, owner: &Address, amount: i128) -> Address {
-    let token_address = env.register_stellar_asset_contract(admin.clone());
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_address = sac.address();
     let token_client = soroban_sdk::token::StellarAssetClient::new(env, &token_address);
     token_client.mint(owner, &amount);
     token_address
@@ -48,7 +48,7 @@ fn create_token(env: &Env, admin: &Address, owner: &Address, amount: i128) -> Ad
 
 fn setup() -> ProtocolFixture {
     let env = Env::default();
-    env.mock_all_auths();
+    env.mock_all_auths_allowing_non_root_auth();
     env.ledger().with_mut(|li| {
         li.timestamp = 1_000_000;
     });
@@ -86,7 +86,6 @@ fn setup() -> ProtocolFixture {
 
     ProtocolFixture {
         env,
-        admin,
         seller,
         buyer,
         base_token,
@@ -193,7 +192,7 @@ fn settlement_fails_on_insufficient_balance() {
 
     // Give buyer only 50 quote (less than the 100 needed).
     let poor_buyer = Address::generate(&f.env);
-    let quote_client = soroban_sdk::token::Client::new(&f.env, &f.quote_token);
+    let quote_client = soroban_sdk::token::StellarAssetClient::new(&f.env, &f.quote_token);
     quote_client.mint(&poor_buyer, &50);
 
     let trade_id = f.settlement.open(
@@ -329,7 +328,7 @@ fn matching_engine_partial_fill_then_settlement() {
 fn cancelled_order_produces_no_trade() {
     let f = setup();
 
-    let sell_id = f.matching.place_order(
+    let _sell_id = f.matching.place_order(
         &f.seller,
         &f.base_token,
         &f.quote_token,

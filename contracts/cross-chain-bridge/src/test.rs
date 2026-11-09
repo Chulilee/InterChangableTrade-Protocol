@@ -99,7 +99,9 @@ fn wrapped_client(f: &BridgeFixture) -> token::Client<'static> {
 fn test_initialize_sets_state_and_validators() {
     let f = setup();
 
-    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::State).unwrap()
+    });
     assert_eq!(state.validator_count, 3);
     assert_eq!(state.required_attestations, 2);
     assert!(!state.is_paused);
@@ -107,15 +109,18 @@ fn test_initialize_sets_state_and_validators() {
     assert_eq!(state.fee, BRIDGE_FEE);
     assert_eq!(state.fee_address, f.fee_address);
 
-    let stored_admin: Address = f.env.storage().instance().get(&DataKey::Admin).unwrap();
+    let stored_admin: Address = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::Admin).unwrap()
+    });
     assert_eq!(stored_admin, f.admin);
 
-    let stored_validators: Vec<Validator> = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Validators)
-        .unwrap();
+    let stored_validators: Vec<Validator> = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Validators)
+            .unwrap()
+    });
     assert_eq!(stored_validators.len(), 3);
 }
 
@@ -173,18 +178,21 @@ fn test_lock_asset_deducts_fee_and_transfers_remainder() {
         DEPOSIT - BRIDGE_FEE
     );
 
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.amount, DEPOSIT - BRIDGE_FEE);
     assert_eq!(transaction.status, TransactionStatus::Pending);
     assert_eq!(transaction.attestations.len(), 0);
 
-    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::State).unwrap()
+    });
     assert_eq!(state.next_transaction_id, 1);
 }
 
@@ -198,12 +206,13 @@ fn test_lock_records_full_transaction() {
         .client
         .lock_asset(&f.user, &f.asset, &DEPOSIT, &to_chain, &to_address);
 
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.id, tx_id);
     assert_eq!(transaction.user, f.user);
@@ -244,7 +253,9 @@ fn test_lock_amount_equal_fee_fails() {
     // Nothing was transferred: the fee was not deducted and nothing was locked.
     assert_eq!(asset_client(&f).balance(&f.fee_address), 0);
     assert_eq!(asset_client(&f).balance(&f.contract_id), 0);
-    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::State).unwrap()
+    });
     assert_eq!(state.next_transaction_id, 0);
 }
 
@@ -261,7 +272,9 @@ fn test_lock_amount_below_fee_fails() {
     assert_eq!(res, Err(Ok(Error::InvalidAmount)));
     assert_eq!(asset_client(&f).balance(&f.fee_address), 0);
     assert_eq!(asset_client(&f).balance(&f.contract_id), 0);
-    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::State).unwrap()
+    });
     assert_eq!(state.next_transaction_id, 0);
 }
 
@@ -288,17 +301,20 @@ fn test_lock_amount_just_above_fee_stores_positive_remainder() {
     // amount == fee + 1: smallest valid lock, remainder must be strictly positive.
     let tx_id = lock(&f, BRIDGE_FEE + 1);
 
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.amount, 1);
     assert!(transaction.amount > 0);
 
-    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::State).unwrap()
+    });
     assert_eq!(state.fee, BRIDGE_FEE);
 }
 
@@ -317,7 +333,9 @@ fn test_initialize_negative_fee_fails() {
     let res = client.try_initialize(&admin, &validators, &1u32, &-1i128, &fee_address);
     assert_eq!(res, Err(Ok(Error::InvalidAmount)));
     // Storage must not be half-initialized after the rejection.
-    let state: Option<BridgeState> = env.storage().instance().get(&DataKey::State);
+    let state: Option<BridgeState> = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&DataKey::State)
+    });
     assert!(state.is_none());
 }
 
@@ -343,12 +361,13 @@ fn test_attest_below_threshold_keeps_pending() {
 
     f.client.attest_transaction(&f.v1, &tx_id);
 
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.status, TransactionStatus::Pending);
     assert_eq!(transaction.attestations.len(), 1);
@@ -362,23 +381,25 @@ fn test_full_attestation_flow_with_multiple_validators() {
 
     // First attestation: still pending.
     f.client.attest_transaction(&f.v1, &tx_id);
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.status, TransactionStatus::Pending);
 
     // Second attestation: required_attestations reached.
     f.client.attest_transaction(&f.v2, &tx_id);
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.status, TransactionStatus::Completed);
     assert_eq!(transaction.attestations.len(), 2);
@@ -436,19 +457,22 @@ fn test_add_validator_then_attest_with_it() {
     let v4 = Address::generate(&f.env);
     f.client.add_validator(&v4);
 
-    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::State).unwrap()
+    });
     assert_eq!(state.validator_count, 4);
 
     // The new validator can participate in attestations.
     let tx_id = lock(&f, DEPOSIT);
     f.client.attest_transaction(&f.v1, &tx_id);
     f.client.attest_transaction(&v4, &tx_id);
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.status, TransactionStatus::Completed);
 }
@@ -460,7 +484,9 @@ fn test_add_duplicate_validator_fails() {
     let res = f.client.try_add_validator(&f.v1);
     assert_eq!(res, Err(Ok(Error::ValidatorAlreadyExists)));
 
-    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::State).unwrap()
+    });
     assert_eq!(state.validator_count, 3);
 }
 
@@ -472,7 +498,9 @@ fn test_remove_validator_while_transaction_pending() {
     // Removing a validator whose transaction is still pending.
     f.client.remove_validator(&f.v1);
 
-    let state: BridgeState = f.env.storage().instance().get(&DataKey::State).unwrap();
+    let state: BridgeState = f.env.as_contract(&f.contract_id, || {
+        f.env.storage().instance().get(&DataKey::State).unwrap()
+    });
     assert_eq!(state.validator_count, 2);
 
     // The removed validator can no longer attest.
@@ -482,12 +510,13 @@ fn test_remove_validator_while_transaction_pending() {
     // The pending transaction can still complete with the remaining validators.
     f.client.attest_transaction(&f.v2, &tx_id);
     f.client.attest_transaction(&f.v3, &tx_id);
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.status, TransactionStatus::Completed);
     assert_eq!(wrapped_client(&f).balance(&f.user), DEPOSIT - BRIDGE_FEE);
@@ -530,12 +559,13 @@ fn test_emergency_withdraw_refunds_pending_transaction() {
     assert_eq!(asset_client(&f).balance(&f.contract_id), 0);
     assert_eq!(asset_client(&f).balance(&f.fee_address), BRIDGE_FEE);
 
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.status, TransactionStatus::Cancelled);
 }
@@ -550,12 +580,13 @@ fn test_emergency_withdraw_after_pause() {
 
     f.client.emergency_withdraw(&f.user, &tx_id);
 
-    let transaction: CrossChainTransaction = f
-        .env
-        .storage()
-        .instance()
-        .get(&DataKey::Transaction(tx_id))
-        .unwrap();
+    let transaction: CrossChainTransaction = f.env.as_contract(&f.contract_id, || {
+        f.env
+            .storage()
+            .instance()
+            .get(&DataKey::Transaction(tx_id))
+            .unwrap()
+    });
 
     assert_eq!(transaction.status, TransactionStatus::Cancelled);
     assert_eq!(asset_client(&f).balance(&f.user), 10_000 - BRIDGE_FEE);

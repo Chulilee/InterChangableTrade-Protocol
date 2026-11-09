@@ -275,14 +275,16 @@ impl NotificationService {
         let mut notifications = Vec::new(&env);
 
         // The id list is append-ordered (oldest first), so "newest first"
-        // pages are read backwards from the end of the requested slice.
+        // pages count back from the end of the list: offset counts how many
+        // of the newest notifications were already consumed by earlier pages.
         if offset < total {
-            let end = (offset + page_size).min(total);
-            let mut i = end as u32;
-            let stop = offset as u32;
-            while i > stop {
-                i -= 1;
-                if let Some(id) = user_ids.get(i) {
+            let mut remaining = page_size;
+            let mut index = (total - 1 - offset) as u32;
+            loop {
+                if remaining == 0 {
+                    break;
+                }
+                if let Some(id) = user_ids.get(index) {
                     if let Some(n) = env
                         .storage()
                         .persistent()
@@ -291,6 +293,11 @@ impl NotificationService {
                         notifications.push_back(n);
                     }
                 }
+                remaining -= 1;
+                if index == 0 {
+                    break;
+                }
+                index -= 1;
             }
         }
 

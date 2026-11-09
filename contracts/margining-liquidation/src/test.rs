@@ -43,19 +43,28 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn set_price(&self, asset: &Address, price: i128) {
-        MockPriceOracleClient::new(&self.env, &self.price_oracle).set_price(asset, &price);
+    fn set_price(&self, asset: &Address, price: &i128) {
+        MockPriceOracleClient::new(&self.env, &self.price_oracle).set_price(asset, price);
     }
 
     /// Register a new Stellar Asset Contract, mint `amount` to `user`, and
-    /// return the token admin client and the token address.
-    fn fund_token(&self, user: &Address, amount: i128) -> (token::StellarAssetClient<'static>, Address) {
+    /// return the token (transfer/balance) client, the admin client and the token address.
+    fn fund_token(
+        &self,
+        user: &Address,
+        amount: i128,
+    ) -> (
+        token::TokenClient<'static>,
+        token::StellarAssetClient<'static>,
+        Address,
+    ) {
         let admin = Address::generate(&self.env);
         let sac = self.env.register_stellar_asset_contract_v2(admin);
         let token = sac.address();
-        let client = token::StellarAssetClient::new(&self.env, &token);
-        client.mint(user, &amount);
-        (client, token)
+        let admin_client = token::StellarAssetClient::new(&self.env, &token);
+        admin_client.mint(user, &amount);
+        let client = token::TokenClient::new(&self.env, &token);
+        (client, admin_client, token)
     }
 }
 
@@ -97,7 +106,7 @@ fn test_initialize_twice_fails() {
 fn test_deposit_and_withdraw_collateral() {
     let f = setup();
     let user = Address::generate(&f.env);
-    let (token_client, asset) = f.fund_token(&user, 1000);
+    let (token_client, _token_sac, asset) = f.fund_token(&user, 1000);
     f.set_price(&asset, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &asset, &1000);
@@ -113,7 +122,7 @@ fn test_deposit_and_withdraw_collateral() {
 
     f.client.withdraw_collateral(&user, &asset, &400);
     let account = f.client.get_margin_account(&user);
-    assert_eq!(account.collateral_balances.get(asset).unwrap(), 600);
+    assert_eq!(account.collateral_balances.get(asset.clone()).unwrap(), 600);
     // Tokens moved back from the contract to the user.
     assert_eq!(token_client.balance(&user), 400);
     assert_eq!(token_client.balance(&f.contract_id), 600);
@@ -124,7 +133,7 @@ fn test_deposit_and_withdraw_collateral() {
 fn test_withdraw_more_than_balance_fails() {
     let f = setup();
     let user = Address::generate(&f.env);
-    let (token_client, asset) = f.fund_token(&user, 500);
+    let (token_client, _token_sac, asset) = f.fund_token(&user, 500);
 
     f.client.deposit_collateral(&user, &asset, &500);
     let res = f.client.try_withdraw_collateral(&user, &asset, &600);
@@ -139,7 +148,7 @@ fn test_open_and_close_position() {
     let f = setup();
     let user = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, quote) = f.fund_token(&user, 200);
+    let (_quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
     f.set_price(&quote, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &quote, &200);
@@ -164,7 +173,7 @@ fn test_open_position_insufficient_margin_fails() {
     let f = setup();
     let user = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, quote) = f.fund_token(&user, 50);
+    let (quote_client, _quote_sac, quote) = f.fund_token(&user, 50);
     f.set_price(&quote, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &quote, &50);
@@ -181,7 +190,7 @@ fn test_margin_check_healthy_account() {
     let f = setup();
     let user = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, quote) = f.fund_token(&user, 200);
+    let (quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
     f.set_price(&quote, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &quote, &200);
@@ -196,7 +205,7 @@ fn test_only_oracle_can_update_mark_price() {
     let f = setup();
     let user = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, quote) = f.fund_token(&user, 200);
+    let (quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
     let stranger = Address::generate(&f.env);
     f.set_price(&quote, &PRICE_ONE);
 
@@ -217,7 +226,7 @@ fn test_liquidation_pays_collateral_and_incentive_to_liquidator() {
     let liquidator = Address::generate(&f.env);
     let sponsor = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, quote) = f.fund_token(&user, 100);
+    let (quote_client, quote_sac, quote) = f.fund_token(&user, 100);
     f.set_price(&quote, &PRICE_ONE);
 
     // Deposit 100 quote tokens as collateral (notional 1000, 10% margin = 100).
@@ -238,7 +247,7 @@ fn test_liquidation_pays_collateral_and_incentive_to_liquidator() {
     // Fund the liquidation incentive reserve: the protocol transfers tokens
     // directly to the contract to cover incentives (never from other users'
     // escrowed collateral).
-    quote_client.mint(&sponsor, &10);
+    quote_sac.mint(&sponsor, &10);
     quote_client.transfer(&sponsor, &f.contract_id, &5);
 
     // Liquidator can now liquidate the undercollateralized account.
@@ -254,7 +263,7 @@ fn test_liquidation_pays_collateral_and_incentive_to_liquidator() {
 
     // User's collateral is fully seized and cannot be withdrawn.
     let account = f.client.get_margin_account(&user);
-    assert_eq!(account.collateral_balances.get(quote), Some(0));
+    assert_eq!(account.collateral_balances.get(quote.clone()), Some(0));
     let res = f.client.try_withdraw_collateral(&user, &quote, &1);
     assert_eq!(res, Err(Ok(Error::InsufficientCollateral)));
 
@@ -272,7 +281,7 @@ fn test_healthy_account_cannot_be_liquidated() {
     let f = setup();
     let user = Address::generate(&f.env);
     let liquidator = Address::generate(&f.env);
-    let (quote_client, quote) = f.fund_token(&user, 200);
+    let (quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
     f.set_price(&quote, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &quote, &200);
@@ -282,8 +291,8 @@ fn test_healthy_account_cannot_be_liquidated() {
     let res = f.client.try_trigger_liquidation(&user, &liquidator);
     assert_eq!(res, Err(Ok(Error::PositionStillHealthy)));
     // No tokens moved on a rejected liquidation.
-    assert_eq!(quote_client.balance(&user), 100);
-    assert_eq!(quote_client.balance(&f.contract_id), 100);
+    assert_eq!(quote_client.balance(&user), 0);
+    assert_eq!(quote_client.balance(&f.contract_id), 200);
     assert_eq!(quote_client.balance(&liquidator), 0);
 }
 
@@ -291,8 +300,8 @@ fn test_healthy_account_cannot_be_liquidated() {
 fn test_collateral_value_uses_oracle_prices() {
     let f = setup();
     let user = Address::generate(&f.env);
-    let (token_client_a, asset_a) = f.fund_token(&user, 10);
-    let (token_client_b, asset_b) = f.fund_token(&user, 10);
+    let (token_client_a, _quote_sac_a, asset_a) = f.fund_token(&user, 10);
+    let (token_client_b, _quote_sac_b, asset_b) = f.fund_token(&user, 10);
 
     // asset_a is worth 2.0, asset_b is worth 0.5 (18-decimal prices).
     f.set_price(&asset_a, &2_000_000_000_000_000_000);
@@ -341,7 +350,7 @@ fn test_collateral_value_fails_when_oracle_unavailable() {
 fn test_collateral_value_fails_when_price_missing() {
     let f = setup();
     let user = Address::generate(&f.env);
-    let (token_client, asset) = f.fund_token(&user, 100);
+    let (token_client, _token_sac, asset) = f.fund_token(&user, 100);
 
     // No price was registered for this asset.
     f.client.deposit_collateral(&user, &asset, &100);
@@ -356,7 +365,7 @@ fn test_oracle_price_drives_margin_health() {
     let f = setup();
     let user = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, quote) = f.fund_token(&user, 200);
+    let (_quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
     f.set_price(&quote, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &quote, &200);
@@ -380,7 +389,7 @@ fn test_withdraw_collateral_below_maintenance_margin_fails() {
     let f = setup();
     let user = Address::generate(&f.env);
     let asset = Address::generate(&f.env);
-    let (quote_client, quote) = f.fund_token(&user, 200);
+    let (quote_client, _quote_sac, quote) = f.fund_token(&user, 200);
     f.set_price(&quote, &PRICE_ONE);
 
     f.client.deposit_collateral(&user, &quote, &200);
@@ -398,7 +407,7 @@ fn test_withdraw_collateral_below_maintenance_margin_fails() {
     // Withdrawing down to exactly the maintenance threshold is allowed.
     f.client.withdraw_collateral(&user, &quote, &150);
     let account = f.client.get_margin_account(&user);
-    assert_eq!(account.collateral_balances.get(quote), Some(50));
+    assert_eq!(account.collateral_balances.get(quote.clone()), Some(50));
     assert_eq!(quote_client.balance(&user), 150);
     assert_eq!(quote_client.balance(&f.contract_id), 50);
     assert_eq!(f.client.escrowed_collateral(&quote), 50);

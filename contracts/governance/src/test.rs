@@ -13,7 +13,7 @@ fn setup() -> (Env, GovernanceClient<'static>, Address) {
     let contract_id = env.register(Governance, ());
     let client = GovernanceClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin).unwrap();
+    client.initialize(&admin);
     (env, client, admin)
 }
 
@@ -35,29 +35,29 @@ fn full_lifecycle_create_vote_queue_execute() {
         &5,
         &100,
         &150,
-    ).unwrap();
+    );
     // `env.events().all()` returns only the most recent invocation's events,
     // so accumulate the count after each emitting call across the lifecycle.
     let mut total_events = env.events().all().len();
 
     env.ledger().set_timestamp(15);
-    client.cast_vote(&proposal_id, &voter, &true, &200).unwrap();
+    client.cast_vote(&proposal_id, &voter, &true, &200);
     total_events += env.events().all().len();
     env.ledger().set_timestamp(25);
-    client.finalize(&proposal_id).unwrap();
+    client.finalize(&proposal_id);
 
-    let state = client.get_state(&proposal_id).unwrap();
+    let state = client.get_state(&proposal_id);
     assert_eq!(state, ProposalState::Succeeded);
 
-    client.queue_execution(&proposal_id, &caller).unwrap();
+    client.queue_execution(&proposal_id, &caller);
     total_events += env.events().all().len();
     env.ledger().set_timestamp(35);
-    client.execute_proposal(&proposal_id, &caller).unwrap();
+    client.execute_proposal(&proposal_id, &caller);
     total_events += env.events().all().len();
 
-    let metadata = client.get_proposal(&proposal_id).unwrap();
+    let metadata = client.get_proposal(&proposal_id);
     assert_eq!(metadata.value, 100);
-    let executed_state = client.get_state(&proposal_id).unwrap();
+    let executed_state = client.get_state(&proposal_id);
     assert_eq!(executed_state, ProposalState::Executed);
     assert_eq!(client.get_parameter(&symbol_short!("fee")), Some(100));
     assert!(total_events >= 4);
@@ -78,10 +78,9 @@ fn cancellation_path_marks_proposal_cancelled() {
         &1,
         &50,
         &80,
-    ).unwrap();
-
-    client.cancel_proposal(&proposal_id, &proposer).unwrap();
-    let metadata = client.get_proposal(&proposal_id).unwrap();
+    );
+    client.cancel_proposal(&proposal_id, &proposer);
+    let metadata = client.get_proposal(&proposal_id);
     assert!(metadata.canceled);
 }
 
@@ -100,16 +99,14 @@ fn timelock_prevents_execution_before_delay() {
         &1,
         &2,
         &2,
-        &2,
         &10,
         &20,
-    ).unwrap();
-
+    );
     env.ledger().set_timestamp(1);
-    client.cast_vote(&proposal_id, &voter, &true, &50).unwrap();
+    client.cast_vote(&proposal_id, &voter, &true, &50);
     env.ledger().set_timestamp(3);
-    client.finalize(&proposal_id).unwrap();
-    client.queue_execution(&proposal_id, &caller).unwrap();
+    client.finalize(&proposal_id);
+    client.queue_execution(&proposal_id, &caller);
 
     let res = client.try_execute_proposal(&proposal_id, &caller);
     assert_eq!(res, Err(Ok(Error::TimelockNotElapsed)));
@@ -164,36 +161,41 @@ fn cast_vote_preserves_order_when_updating() {
         &5,
         &100,
         &150,
-    ).unwrap();
-
+    );
     env.ledger().set_timestamp(20);
 
     // Cast votes in order: voter1, voter2, voter3
-    client.cast_vote(&proposal_id, &voter1, &true, &100).unwrap();
-    client.cast_vote(&proposal_id, &voter2, &false, &200).unwrap();
-    client.cast_vote(&proposal_id, &voter3, &true, &150).unwrap();
+    client.cast_vote(&proposal_id, &voter1, &true, &100);
+    client.cast_vote(&proposal_id, &voter2, &false, &200);
+    client.cast_vote(&proposal_id, &voter3, &true, &150);
 
     // Get initial vote order
-    let votes_before = client.get_votes(&proposal_id).unwrap();
-    let order_before: Vec<Address> = votes_before.iter().map(|v| v.voter).collect();
+    let votes_before = client.get_votes(&proposal_id);
+    let mut order_before: Vec<Address> = Vec::new(&env);
+    for v in votes_before.iter() {
+        order_before.push_back(v.voter.clone());
+    }
 
     // Update voter2's vote (should stay in the same position)
-    client.cast_vote(&proposal_id, &voter2, &true, &250).unwrap();
+    client.cast_vote(&proposal_id, &voter2, &true, &250);
 
     // Get vote order after update
-    let votes_after = client.get_votes(&proposal_id).unwrap();
-    let order_after: Vec<Address> = votes_after.iter().map(|v| v.voter).collect();
+    let votes_after = client.get_votes(&proposal_id);
+    let mut order_after: Vec<Address> = Vec::new(&env);
+    for v in votes_after.iter() {
+        order_after.push_back(v.voter.clone());
+    }
 
     // Vote order should be preserved: voter1, voter2, voter3
     assert_eq!(order_before, order_after);
     assert_eq!(order_after.len(), 3);
-    assert_eq!(order_after.get(0).unwrap(), &voter1);
-    assert_eq!(order_after.get(1).unwrap(), &voter2);
-    assert_eq!(order_after.get(2).unwrap(), &voter3);
+    assert_eq!(order_after.get(0).unwrap(), voter1.clone());
+    assert_eq!(order_after.get(1).unwrap(), voter2.clone());
+    assert_eq!(order_after.get(2).unwrap(), voter3.clone());
 
     // Verify voter2's updated vote
     let voter2_vote = votes_after.iter().find(|v| v.voter == voter2).unwrap();
-    assert_eq!(voter2_vote.support, true);
+    assert!(voter2_vote.support);
     assert_eq!(voter2_vote.weight, 250);
 }
 
@@ -213,26 +215,25 @@ fn cast_vote_updates_count_correctly() {
         &5,
         &100,
         &150,
-    ).unwrap();
-
+    );
     env.ledger().set_timestamp(20);
 
     // Initial vote
-    client.cast_vote(&proposal_id, &voter, &true, &100).unwrap();
-    let votes = client.get_votes(&proposal_id).unwrap();
+    client.cast_vote(&proposal_id, &voter, &true, &100);
+    let votes = client.get_votes(&proposal_id);
     assert_eq!(votes.len(), 1);
     assert_eq!(votes.get(0).unwrap().weight, 100);
 
     // Update vote (should not change count)
-    client.cast_vote(&proposal_id, &voter, &false, &200).unwrap();
-    let votes = client.get_votes(&proposal_id).unwrap();
+    client.cast_vote(&proposal_id, &voter, &false, &200);
+    let votes = client.get_votes(&proposal_id);
     assert_eq!(votes.len(), 1);
     assert_eq!(votes.get(0).unwrap().weight, 200);
-    assert_eq!(votes.get(0).unwrap().support, false);
+    assert!(!votes.get(0).unwrap().support);
 
     // Update vote with same values (should not change anything)
-    client.cast_vote(&proposal_id, &voter, &false, &200).unwrap();
-    let votes = client.get_votes(&proposal_id).unwrap();
+    client.cast_vote(&proposal_id, &voter, &false, &200);
+    let votes = client.get_votes(&proposal_id);
     assert_eq!(votes.len(), 1);
     assert_eq!(votes.get(0).unwrap().weight, 200);
 }
