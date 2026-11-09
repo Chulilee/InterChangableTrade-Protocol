@@ -106,6 +106,11 @@ impl RiskManager {
         let new_exposure = exposure
             .checked_add(order_size)
             .ok_or(RiskError::CumulativeExposureExceeded)?;
+        // Clamp cumulative exposure to the configured max_order_size per trader;
+        // this is the cap the `CumulativeExposureExceeded` error exists for.
+        if new_exposure > max_order_size {
+            return Err(RiskError::CumulativeExposureExceeded);
+        }
         env.storage()
             .persistent()
             .set(&DataKey::CumulativeExposure(trader.clone()), &new_exposure);
