@@ -21,6 +21,7 @@ pub enum RiskError {
     MaxOrderSizeExceeded = 2,
     CumulativeExposureExceeded = 3,
     Unauthorized = 4,
+    NotInitialized = 5,
 }
 
 const EVT_MKT_PAUSED: Symbol = symbol_short!("mkt_paus");
@@ -47,7 +48,11 @@ impl RiskManager {
 
     pub fn pause_market(env: Env, caller: Address) -> Result<(), RiskError> {
         caller.require_auth();
-        let pauser: Address = env.storage().instance().get(&DataKey::Pauser).unwrap();
+        let pauser: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Pauser)
+            .ok_or(RiskError::NotInitialized)?;
         if caller != pauser {
             return Err(RiskError::Unauthorized);
         }
@@ -58,7 +63,11 @@ impl RiskManager {
 
     pub fn unpause_market(env: Env, caller: Address) -> Result<(), RiskError> {
         caller.require_auth();
-        let pauser: Address = env.storage().instance().get(&DataKey::Pauser).unwrap();
+        let pauser: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Pauser)
+            .ok_or(RiskError::NotInitialized)?;
         if caller != pauser {
             return Err(RiskError::Unauthorized);
         }
@@ -69,7 +78,11 @@ impl RiskManager {
 
     pub fn set_limit(env: Env, caller: Address, max_order_size: i128) -> Result<(), RiskError> {
         caller.require_auth();
-        let pauser: Address = env.storage().instance().get(&DataKey::Pauser).unwrap();
+        let pauser: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Pauser)
+            .ok_or(RiskError::NotInitialized)?;
         if caller != pauser {
             return Err(RiskError::Unauthorized);
         }
@@ -94,7 +107,7 @@ impl RiskManager {
             .storage()
             .instance()
             .get(&DataKey::MaxOrderSize)
-            .unwrap();
+            .ok_or(RiskError::NotInitialized)?;
         if order_size > max_order_size {
             return Err(RiskError::MaxOrderSizeExceeded);
         }

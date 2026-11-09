@@ -274,7 +274,9 @@ impl MatchingEngine {
             &mut order_book.asks
         };
         for i in 0..levels.len() {
-            let mut level = levels.get(i).unwrap();
+            let Some(mut level) = levels.get(i) else {
+                continue;
+            };
             if level.price == order.price {
                 let mut new_ids = Vec::new(&env);
                 for id in level.order_ids.iter() {
@@ -495,8 +497,10 @@ impl MatchingEngine {
         if order_book.bids.is_empty() || order_book.asks.is_empty() {
             return false;
         }
-        let best_bid = order_book.bids.get(0).unwrap();
-        let best_ask = order_book.asks.get(0).unwrap();
+        let (Some(best_bid), Some(best_ask)) = (order_book.bids.get(0), order_book.asks.get(0))
+        else {
+            return false;
+        };
         best_bid.price >= best_ask.price
     }
 
@@ -535,8 +539,8 @@ impl MatchingEngine {
             }
 
             // Get the first order in each price level (time priority)
-            let bid_order_id = best_bid.order_ids.first().unwrap();
-            let ask_order_id = best_ask.order_ids.first().unwrap();
+            let bid_order_id = best_bid.order_ids.first().ok_or(Error::OrderNotFound)?;
+            let ask_order_id = best_ask.order_ids.first().ok_or(Error::OrderNotFound)?;
 
             // Find the actual order objects
             let mut bid_order = order_book
@@ -654,24 +658,28 @@ impl MatchingEngine {
 
             // Remove filled orders from price levels
             if bid_order.filled == bid_order.quantity {
-                let mut bb = order_book.bids.get(0).unwrap();
-                bb.order_ids.remove(0);
-                order_book.bids.set(0, bb);
+                if let Some(mut bb) = order_book.bids.get(0) {
+                    bb.order_ids.remove(0);
+                    order_book.bids.set(0, bb);
+                }
             }
             if ask_order.filled == ask_order.quantity {
-                let mut ba = order_book.asks.get(0).unwrap();
-                ba.order_ids.remove(0);
-                order_book.asks.set(0, ba);
+                if let Some(mut ba) = order_book.asks.get(0) {
+                    ba.order_ids.remove(0);
+                    order_book.asks.set(0, ba);
+                }
             }
 
             // Remove empty price levels
-            let current_best_bid = order_book.bids.get(0).unwrap();
-            if current_best_bid.order_ids.is_empty() {
-                order_book.bids.remove(0);
+            if let Some(current_best_bid) = order_book.bids.get(0) {
+                if current_best_bid.order_ids.is_empty() {
+                    order_book.bids.remove(0);
+                }
             }
-            let current_best_ask = order_book.asks.get(0).unwrap();
-            if current_best_ask.order_ids.is_empty() {
-                order_book.asks.remove(0);
+            if let Some(current_best_ask) = order_book.asks.get(0) {
+                if current_best_ask.order_ids.is_empty() {
+                    order_book.asks.remove(0);
+                }
             }
 
             // Add to executed trades

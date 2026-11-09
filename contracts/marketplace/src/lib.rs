@@ -89,7 +89,11 @@ impl Marketplace {
 
     pub fn set_risk_manager(env: Env, risk_manager: Address) -> Result<(), Error> {
         Self::ensure_init(&env)?;
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
         env.storage()
             .instance()

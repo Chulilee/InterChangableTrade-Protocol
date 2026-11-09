@@ -11,7 +11,9 @@
 //! This contract remains deployed for backward compatibility but will not receive
 //! updates or bug fixes. New deployments should use `matching-engine`.
 
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[contracttype]
@@ -45,6 +47,15 @@ pub struct Order {
 
 const ORDERS: Symbol = symbol_short!("ORDERS");
 const NEXT_ID: Symbol = symbol_short!("NEXT_ID");
+
+/// Errors surfaced by the orderbook.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    NotFoundOrNotOwner = 1,
+    InvalidAmount = 2,
+}
 
 // OrderbookContract is a simple order book contract that allows users to place, cancel, and update orders. It also provides functionality to retrieve orders by ID or by owner, as well as to get the best bid and ask prices in the order book.
 #[contract]
@@ -120,33 +131,27 @@ impl OrderbookContract {
         owner_orders
     }
 
-    pub fn cancel_order(env: Env, owner: Address, order_id: u64) {
+    pub fn cancel_order(env: Env, owner: Address, order_id: u64) -> Result<(), Error> {
         owner.require_auth();
 
         let mut orders = Self::get_orders(env.clone());
-        let mut order_found = false;
 
         for i in 0..orders.len() {
             if let Some(mut order) = orders.get(i) {
                 if order.id == order_id && order.owner == owner {
                     order.status = OrderStatus::Cancelled;
                     orders.set(i, order.clone());
-                    order_found = true;
-
+                    env.storage().persistent().set(&ORDERS, &orders);
                     env.events().publish(
                         (symbol_short!("order"), symbol_short!("cancelled")),
                         (order.id, order.owner),
                     );
-                    break;
+                    return Ok(());
                 }
             }
         }
 
-        if order_found {
-            env.storage().persistent().set(&ORDERS, &orders);
-        } else {
-            panic!("Order not found or not owned by the caller");
-        }
+        Err(Error::NotFoundOrNotOwner)
     }
 
     pub fn get_best_bid_ask(env: Env) -> (Option<u64>, Option<u64>) {
@@ -188,11 +193,10 @@ impl OrderbookContract {
         order_id: u64,
         new_price: u64,
         new_quantity: u64,
-    ) {
+    ) -> Result<(), Error> {
         owner.require_auth();
 
         let mut orders = Self::get_orders(env.clone());
-        let mut order_found = false;
 
         for i in 0..orders.len() {
             if let Some(mut order) = orders.get(i) {
@@ -200,22 +204,17 @@ impl OrderbookContract {
                     order.price = new_price;
                     order.quantity = new_quantity;
                     orders.set(i, order.clone());
-                    order_found = true;
-
+                    env.storage().persistent().set(&ORDERS, &orders);
                     env.events().publish(
                         (symbol_short!("order"), symbol_short!("updated")),
                         (order.id, order.price, order.quantity),
                     );
-                    break;
+                    return Ok(());
                 }
             }
         }
 
-        if order_found {
-            env.storage().persistent().set(&ORDERS, &orders);
-        } else {
-            panic!("Order not found or not owned by the caller");
-        }
+        Err(Error::NotFoundOrNotOwner)
     }
 }
 

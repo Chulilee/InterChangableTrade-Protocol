@@ -68,7 +68,7 @@ impl NettingEngine {
 
             for key in net_balances.keys().iter() {
                 if key.1 == asset {
-                    let bal = net_balances.get(key.clone()).unwrap();
+                    let bal = net_balances.get(key.clone()).unwrap_or(0);
                     if bal < 0 {
                         debtors.push_back((key.0, -bal));
                     } else if bal > 0 {
@@ -81,8 +81,12 @@ impl NettingEngine {
             let mut c_idx: u32 = 0;
 
             while d_idx < debtors.len() && c_idx < creditors.len() {
-                let (debtor_addr, debt_amt) = debtors.get(d_idx).unwrap();
-                let (creditor_addr, cred_amt) = creditors.get(c_idx).unwrap();
+                let Some((debtor_addr, debt_amt)) = debtors.get(d_idx) else {
+                    break;
+                };
+                let Some((creditor_addr, cred_amt)) = creditors.get(c_idx) else {
+                    break;
+                };
 
                 let transfer_amt = if debt_amt < cred_amt {
                     debt_amt

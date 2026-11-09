@@ -610,12 +610,16 @@ impl TradeMatching {
         // Build sorted vector manually (Soroban Vec doesn't support in-place swap).
         let mut sorted: Vec<Match> = Vec::new(matches.env());
         for i in 0..len {
-            let current = matches.get(i).unwrap();
+            let Some(current) = matches.get(i) else {
+                continue;
+            };
             let mut insert_pos = sorted.len();
             for j in 0..sorted.len() {
-                if current.score > sorted.get(j).unwrap().score {
-                    insert_pos = j;
-                    break;
+                if let Some(existing) = sorted.get(j) {
+                    if current.score > existing.score {
+                        insert_pos = j;
+                        break;
+                    }
                 }
             }
             sorted.insert(insert_pos, current);
