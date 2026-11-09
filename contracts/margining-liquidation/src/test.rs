@@ -43,8 +43,8 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn set_price(&self, asset: &Address, price: i128) {
-        MockPriceOracleClient::new(&self.env, &self.price_oracle).set_price(asset, &price);
+    fn set_price(&self, asset: &Address, price: &i128) {
+        MockPriceOracleClient::new(&self.env, &self.price_oracle).set_price(asset, price);
     }
 
     /// Register a new Stellar Asset Contract, mint `amount` to `user`, and

@@ -3,7 +3,7 @@ use super::*;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, Ledger},
-    Address, Env, IntoVal,
+    Address, Env, TryIntoVal,
 };
 
 struct Fixture {

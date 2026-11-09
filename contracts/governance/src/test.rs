@@ -171,21 +171,27 @@ fn cast_vote_preserves_order_when_updating() {
 
     // Get initial vote order
     let votes_before = client.get_votes(&proposal_id);
-    let order_before: Vec<Address> = votes_before.iter().map(|v| v.voter).collect();
+    let mut order_before: Vec<Address> = Vec::new(&env);
+    for v in votes_before.iter() {
+        order_before.push_back(v.voter.clone());
+    }
 
     // Update voter2's vote (should stay in the same position)
     client.cast_vote(&proposal_id, &voter2, &true, &250);
 
     // Get vote order after update
     let votes_after = client.get_votes(&proposal_id);
-    let order_after: Vec<Address> = votes_after.iter().map(|v| v.voter).collect();
+    let mut order_after: Vec<Address> = Vec::new(&env);
+    for v in votes_after.iter() {
+        order_after.push_back(v.voter.clone());
+    }
 
     // Vote order should be preserved: voter1, voter2, voter3
     assert_eq!(order_before, order_after);
     assert_eq!(order_after.len(), 3);
-    assert_eq!(order_after.get(0).unwrap(), &voter1);
-    assert_eq!(order_after.get(1).unwrap(), &voter2);
-    assert_eq!(order_after.get(2).unwrap(), &voter3);
+    assert_eq!(order_after.get(0).unwrap(), voter1.clone());
+    assert_eq!(order_after.get(1).unwrap(), voter2.clone());
+    assert_eq!(order_after.get(2).unwrap(), voter3.clone());
 
     // Verify voter2's updated vote
     let voter2_vote = votes_after.iter().find(|v| v.voter == voter2).unwrap();

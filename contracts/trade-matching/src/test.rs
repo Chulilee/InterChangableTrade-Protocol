@@ -14,7 +14,6 @@ use soroban_sdk::{
 struct Fixture {
     env: Env,
     client: TradeMatchingClient<'static>,
-    admin: Address,
 }
 
 fn setup() -> Fixture {
@@ -28,7 +27,7 @@ fn setup() -> Fixture {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    Fixture { env, client, admin }
+    Fixture { env, client }
 }
 
 // ---------------------------------------------------------------------------
