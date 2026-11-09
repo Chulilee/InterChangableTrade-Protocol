@@ -292,7 +292,7 @@ impl MarginingLiquidation {
             .storage()
             .instance()
             .get(&DataKey::NextPositionId)
-            .unwrap();
+            .ok_or(Error::NotInitialized)?;
         let position = Position {
             id,
             owner: owner.clone(),
