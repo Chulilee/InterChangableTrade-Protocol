@@ -274,7 +274,9 @@ impl MatchingEngine {
             &mut order_book.asks
         };
         for i in 0..levels.len() {
-            let Some(mut level) = levels.get(i) else { continue; };
+            let Some(mut level) = levels.get(i) else {
+                continue;
+            };
             if level.price == order.price {
                 let mut new_ids = Vec::new(&env);
                 for id in level.order_ids.iter() {
@@ -495,7 +497,8 @@ impl MatchingEngine {
         if order_book.bids.is_empty() || order_book.asks.is_empty() {
             return false;
         }
-        let (Some(best_bid), Some(best_ask)) = (order_book.bids.get(0), order_book.asks.get(0)) else {
+        let (Some(best_bid), Some(best_ask)) = (order_book.bids.get(0), order_book.asks.get(0))
+        else {
             return false;
         };
         best_bid.price >= best_ask.price

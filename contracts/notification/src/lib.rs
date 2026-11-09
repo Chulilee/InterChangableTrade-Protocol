@@ -13,7 +13,8 @@
 //! indexers (WebSocket relays, polling services) can pick them up in real time.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address, Env, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, Symbol, Vec,
 };
 
 // ---------------------------------------------------------------------------
@@ -156,7 +157,11 @@ impl NotificationService {
         reference_id: Option<u64>,
     ) -> Result<u64, Error> {
         Self::ensure_init(&env)?;
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         // Only the admin may send notifications; require the caller's actual
         // signature so an impostor cannot forge the admin's address.
         caller.require_auth();
@@ -429,7 +434,11 @@ impl NotificationService {
 
     /// Transfer admin role. Only the current admin may call this.
     pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         caller.require_auth();
         if caller != admin {
             return Err(Error::Unauthorized);

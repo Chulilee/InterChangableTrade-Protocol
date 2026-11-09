@@ -121,27 +121,47 @@ impl CrossChainBridge {
     }
 
     pub fn pause_bridge(env: Env) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let mut state: BridgeState = env.storage().instance().get(&DataKey::State).ok_or(Error::NotInitialized)?;
+        let mut state: BridgeState = env
+            .storage()
+            .instance()
+            .get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
         state.is_paused = true;
         env.storage().instance().set(&DataKey::State, &state);
         Ok(())
     }
 
     pub fn unpause_bridge(env: Env) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let mut state: BridgeState = env.storage().instance().get(&DataKey::State).ok_or(Error::NotInitialized)?;
+        let mut state: BridgeState = env
+            .storage()
+            .instance()
+            .get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
         state.is_paused = false;
         env.storage().instance().set(&DataKey::State, &state);
         Ok(())
     }
 
     pub fn register_asset(env: Env, asset: Address, wrapped_asset: Address) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
         env.storage()
@@ -160,7 +180,11 @@ impl CrossChainBridge {
     ) -> Result<u64, Error> {
         user.require_auth();
 
-        let mut state: BridgeState = env.storage().instance().get(&DataKey::State).ok_or(Error::NotInitialized)?;
+        let mut state: BridgeState = env
+            .storage()
+            .instance()
+            .get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
         if state.is_paused {
             return Err(Error::BridgePaused);
         }
@@ -218,9 +242,16 @@ impl CrossChainBridge {
     ) -> Result<(), Error> {
         validator.require_auth();
 
-        let state: BridgeState = env.storage().instance().get(&DataKey::State).ok_or(Error::NotInitialized)?;
-        let validators: Vec<Validator> =
-            env.storage().instance().get(&DataKey::Validators).ok_or(Error::NotInitialized)?;
+        let state: BridgeState = env
+            .storage()
+            .instance()
+            .get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
+        let validators: Vec<Validator> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Validators)
+            .ok_or(Error::NotInitialized)?;
 
         if !validators
             .iter()
@@ -275,11 +306,18 @@ impl CrossChainBridge {
     }
 
     pub fn add_validator(env: Env, new_validator: Address) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let mut validators: Vec<Validator> =
-            env.storage().instance().get(&DataKey::Validators).ok_or(Error::NotInitialized)?;
+        let mut validators: Vec<Validator> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Validators)
+            .ok_or(Error::NotInitialized)?;
         if validators.iter().any(|v| v.public_key == new_validator) {
             return Err(Error::ValidatorAlreadyExists);
         }
@@ -289,7 +327,11 @@ impl CrossChainBridge {
             is_active: true,
         });
 
-        let mut state: BridgeState = env.storage().instance().get(&DataKey::State).ok_or(Error::NotInitialized)?;
+        let mut state: BridgeState = env
+            .storage()
+            .instance()
+            .get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
         state.validator_count += 1;
 
         env.storage()
@@ -301,11 +343,18 @@ impl CrossChainBridge {
     }
 
     pub fn remove_validator(env: Env, validator_to_remove: Address) -> Result<(), Error> {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let mut validators: Vec<Validator> =
-            env.storage().instance().get(&DataKey::Validators).ok_or(Error::NotInitialized)?;
+        let mut validators: Vec<Validator> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Validators)
+            .ok_or(Error::NotInitialized)?;
         let initial_len = validators.len();
 
         let mut kept: Vec<Validator> = Vec::new(&env);
@@ -320,7 +369,11 @@ impl CrossChainBridge {
             return Err(Error::ValidatorNotFound);
         }
 
-        let mut state: BridgeState = env.storage().instance().get(&DataKey::State).ok_or(Error::NotInitialized)?;
+        let mut state: BridgeState = env
+            .storage()
+            .instance()
+            .get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
         state.validator_count -= 1;
 
         env.storage()

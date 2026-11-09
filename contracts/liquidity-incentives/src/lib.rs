@@ -173,7 +173,11 @@ impl LiquidityIncentives {
         }
 
         let now = env.ledger().timestamp();
-        let id: u64 = env.storage().instance().get(&DataKey::NextPoolId).ok_or(Error::NotInitialized)?;
+        let id: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextPoolId)
+            .ok_or(Error::NotInitialized)?;
         let pool = Pool {
             id,
             staking_token,

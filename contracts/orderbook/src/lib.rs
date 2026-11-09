@@ -11,7 +11,9 @@
 //! This contract remains deployed for backward compatibility but will not receive
 //! updates or bug fixes. New deployments should use `matching-engine`.
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[contracttype]
