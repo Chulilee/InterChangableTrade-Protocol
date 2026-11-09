@@ -68,6 +68,12 @@ for reference; `matching-engine` is the canonical order book going forward.
   auto-incrementing `u64` ids.
 - Mutating entry points call `require_auth()` on the relevant party, and every
   state transition publishes an event so off-chain indexers can follow along.
+- One-time `initialize()` entry points **require auth from the admin/role
+  address passed in** (the `risk-management` pattern): deploy tooling must sign
+  with the account it passes as `admin`. Contracts without an admin parameter
+  (`price-oracle`, `margining-liquidation`) can only be deployed and
+  atomically initialized onto a fresh host; see ADR-006 and the
+  [initialize-front-running note](architecture.md#open-integration-gaps).
 - Errors are returned via `#[contracterror]` enums rather than panics, so callers
   can use the generated `try_*` client methods.
 - Units: fees use basis points (`10_000 bps = 100%`); margin ratios and reward
@@ -83,6 +89,7 @@ The significant architectural decisions behind this design are recorded in
 - [ADR-003](adr/ADR-003-why-settlement-and-escrow-are-separate.md) — why settlement and escrow are separate (and the duplicated settlement paths tracked in the gaps above)
 - [ADR-004](adr/ADR-004-why-matching-engine-replaced-orderbook.md) — why the matching engine is canonical and `orderbook` is legacy
 - [ADR-005](adr/ADR-005-why-basis-points-for-fee-calculation.md) — why fees and ratios use basis points / 1e18 fixed point
+- [ADR-006](adr/ADR-006-canonical-settlement-path.md) — canonical settlement path and the staged escrow migration plan
 
 ## Open integration gaps
 
@@ -91,8 +98,10 @@ end-to-end. Known gaps, in rough priority order:
 
 1. **Settlement paths are duplicated.** `trade-settlement` moves tokens itself
    (bilateral transfers, optionally netted per batch) and does not use
-   `escrow`, which tracks deposits but never moves tokens. One of the two
-   mechanisms should become the single settlement path.
+   `escrow`, which tracks deposits but never moves tokens. Converging on
+   `trade-settlement` (ADR-006) removes this duplication once the migration
+   issues land; until then, treat `escrow` as accounting-only and
+   `trade-settlement` as authoritative for asset movement.
 2. **Matched orders are not settled.** The matching engine's settlement hook is
    a placeholder; orders can be marked `Filled` without any tokens moving.
 3. **Fees are not attached to trades.** Nothing calls `fee-commission` when a
