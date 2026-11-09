@@ -89,6 +89,27 @@ jobs:
       - name: Run tests
         run: cd ${{ matrix.contract }} && cargo test
 
+  contract-code-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail on panic! in contract code
+        run: |
+          if grep -RIn --include='*.rs' 'panic!(' contracts/*/src | grep -v '/test.rs:'; then
+            echo "ERROR: panic!() is not allowed in contract source (except tests). Use #[contracterror] and Result." >&2
+            exit 1
+          fi
+          echo "OK: no panic!() in contract source"
+
+      - name: Fail on unwrap() in contract code
+        run: |
+          if grep -RIn --include='*.rs' '\.unwrap()' contracts/*/src | grep -v '/test.rs:'; then
+            echo "ERROR: unwrap() is not allowed in contract source (except tests). Use ok_or(...)? or proper error handling." >&2
+            exit 1
+          fi
+          echo "OK: no unwrap() in contract source"
+
   check-integration-tests:
     runs-on: ubuntu-latest
     steps:
