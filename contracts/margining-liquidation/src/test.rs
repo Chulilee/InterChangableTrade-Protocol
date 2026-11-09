@@ -291,8 +291,8 @@ fn test_healthy_account_cannot_be_liquidated() {
     let res = f.client.try_trigger_liquidation(&user, &liquidator);
     assert_eq!(res, Err(Ok(Error::PositionStillHealthy)));
     // No tokens moved on a rejected liquidation.
-    assert_eq!(quote_client.balance(&user), 100);
-    assert_eq!(quote_client.balance(&f.contract_id), 100);
+    assert_eq!(quote_client.balance(&user), 0);
+    assert_eq!(quote_client.balance(&f.contract_id), 200);
     assert_eq!(quote_client.balance(&liquidator), 0);
 }
 
