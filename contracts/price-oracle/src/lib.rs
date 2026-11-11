@@ -6,9 +6,9 @@
 //! support, sanity checks (max deviation, freshness thresholds), and fallback logic
 //! to secondary sources. Protects against price manipulation and stale data.
 
+use shared_auth::{ROLE_ADMIN, ROLE_OPERATOR};
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal,
-    Symbol,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
 };
 
 /// Enum representing a price source type
@@ -96,10 +96,6 @@ pub enum DataKey {
 const EVT_ORACLE_UPDATED: Symbol = symbol_short!("orc_upd");
 const EVT_ORACLE_SOURCE_CHANGED: Symbol = symbol_short!("orc_src");
 
-/// Predefined roles from access-control pattern.
-const ROLE_ADMIN: Symbol = symbol_short!("ADMIN");
-const ROLE_OPERATOR: Symbol = symbol_short!("OPERATOR");
-
 #[contract]
 pub struct PriceOracle;
 
@@ -138,7 +134,7 @@ impl PriceOracle {
         source_type: OracleSourceType,
         address: Address,
     ) -> Result<(), Error> {
-        Self::require_role(&env, &caller, ROLE_ADMIN)?;
+        Self::require_role(&env, &caller, &ROLE_ADMIN)?;
 
         let source = OracleSource {
             address: address.clone(),
@@ -169,7 +165,7 @@ impl PriceOracle {
         asset: Address,
         new_price: i128,
     ) -> Result<(), Error> {
-        Self::require_role(&env, &caller, ROLE_OPERATOR)?;
+        Self::require_role(&env, &caller, &ROLE_OPERATOR)?;
 
         let config: OracleConfig = env
             .storage()
@@ -275,7 +271,7 @@ impl PriceOracle {
         caller: Address,
         source_type: OracleSourceType,
     ) -> Result<(), Error> {
-        Self::require_role(&env, &caller, ROLE_ADMIN)?;
+        Self::require_role(&env, &caller, &ROLE_ADMIN)?;
 
         let mut source: OracleSource = env
             .storage()
@@ -299,27 +295,15 @@ impl PriceOracle {
         Ok(())
     }
 
-    /// Internal helper to check caller authorization using the access-control contract.
-    fn require_role(env: &Env, caller: &Address, required_role: Symbol) -> Result<(), Error> {
+    /// Check caller authorization by asking the shared access-control helper.
+    fn require_role(env: &Env, caller: &Address, role: &Symbol) -> Result<(), Error> {
         let access_control: Address = env
             .storage()
             .instance()
             .get(&DataKey::AccessControl)
             .ok_or(Error::NotInitialized)?;
-
-        caller.require_auth();
-
-        // Call the access-control contract to check if the caller has the role.
-        let has_role: bool = env.invoke_contract(
-            &access_control,
-            &Symbol::new(env, "has_role"),
-            (required_role, caller.clone()).into_val(env),
-        );
-
-        if !has_role {
-            return Err(Error::Unauthorized);
-        }
-        Ok(())
+        shared_auth::require_role(env, &access_control, caller, role)
+            .map_err(|_| Error::Unauthorized)
     }
 }
 
