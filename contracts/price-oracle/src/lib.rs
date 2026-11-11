@@ -93,8 +93,8 @@ pub enum DataKey {
 }
 
 /// Event symbols (max 9 chars for `symbol_short!`).
-const EVT_ORACLE_UPDATED: Symbol = symbol_short!("orc_upd");
-const EVT_ORACLE_SOURCE_CHANGED: Symbol = symbol_short!("orc_src");
+const EVT_ORACLE_UPDATED: Symbol = symbol_short!("updated");
+const EVT_ORACLE_SOURCE_CHANGED: Symbol = symbol_short!("changed");
 
 #[contract]
 pub struct PriceOracle;

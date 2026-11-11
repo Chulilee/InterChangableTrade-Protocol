@@ -121,11 +121,11 @@ pub enum Error {
     DuplicateRecipient = 10,
 }
 
-const EVT_FEE_COLLECTED: Symbol = symbol_short!("feecollct");
-const EVT_FEE_DISTRIB: Symbol = symbol_short!("feedistr");
-const EVT_CONFIG_SET: Symbol = symbol_short!("cfgset");
-const EVT_SCHEDULED: Symbol = symbol_short!("cfgsched");
-const EVT_EXEMPT_SET: Symbol = symbol_short!("exemptset");
+const EVT_FEE_COLLECTED: Symbol = symbol_short!("collected");
+const EVT_FEE_DISTRIB: Symbol = symbol_short!("paid");
+const EVT_CONFIG_SET: Symbol = symbol_short!("cfg_set");
+const EVT_SCHEDULED: Symbol = symbol_short!("scheduled");
+const EVT_EXEMPT_SET: Symbol = symbol_short!("exempted");
 
 #[contract]
 pub struct FeeCommission;

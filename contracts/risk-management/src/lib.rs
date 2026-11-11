@@ -26,9 +26,9 @@ pub enum RiskError {
     NotInitialized = 5,
 }
 
-const EVT_MKT_PAUSED: Symbol = symbol_short!("mkt_paus");
-const EVT_MKT_UNPAUS: Symbol = symbol_short!("mkt_unp");
-const EVT_LIM_UPDATED: Symbol = symbol_short!("lim_upd");
+const EVT_MKT_PAUSED: Symbol = symbol_short!("paused");
+const EVT_MKT_UNPAUS: Symbol = symbol_short!("unpaused");
+const EVT_LIM_UPDATED: Symbol = symbol_short!("limit_set");
 
 #[contract]
 pub struct RiskManager;

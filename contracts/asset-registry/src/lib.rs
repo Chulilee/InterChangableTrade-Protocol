@@ -45,7 +45,7 @@ pub enum Error {
     AssetNotFound = 4,
 }
 
-const EVT_REGISTERED: Symbol = symbol_short!("registerd");
+const EVT_REGISTERED: Symbol = symbol_short!("added");
 const EVT_REMOVED: Symbol = symbol_short!("removed");
 
 #[contract]
