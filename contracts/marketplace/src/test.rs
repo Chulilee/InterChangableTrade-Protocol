@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use super::*;
+use access_control::{AccessControl, AccessControlClient};
 use risk_management::{RiskManager, RiskManagerClient};
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
@@ -15,17 +16,23 @@ struct Fixture {
 fn setup() -> Fixture {
     let env = Env::default();
     env.mock_all_auths();
+
+    // Deploy access-control and grant the admin the ADMIN role.
+    let ac_id = env.register(AccessControl, ());
+    let ac = AccessControlClient::new(&env, &ac_id);
+    let admin = Address::generate(&env);
+    ac.initialize(&admin);
+
     let contract_id = env.register(Marketplace, ());
     let client = MarketplaceClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &ac_id);
 
     // Deploy and wire a risk manager: create_listing/fill_listing consult it
     // for order-size limits on every call.
     let rm_address = env.register(RiskManager, ());
     let rm = RiskManagerClient::new(&env, &rm_address);
-    rm.initialize(&admin, &1_000_000);
-    client.set_risk_manager(&rm_address);
+    rm.initialize(&admin, &ac_id, &1_000_000);
+    client.set_risk_manager(&admin, &rm_address);
 
     Fixture {
         seller: Address::generate(&env),
@@ -39,10 +46,15 @@ fn setup() -> Fixture {
 fn setup_no_risk_manager() -> Fixture {
     let env = Env::default();
     env.mock_all_auths();
+
+    let ac_id = env.register(AccessControl, ());
+    let ac = AccessControlClient::new(&env, &ac_id);
+    let admin = Address::generate(&env);
+    ac.initialize(&admin);
+
     let contract_id = env.register(Marketplace, ());
     let client = MarketplaceClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &ac_id);
     Fixture {
         seller: Address::generate(&env),
         asset: Address::generate(&env),
@@ -89,7 +101,8 @@ fn initialize_rejects_unauthorized_admin() {
     let contract_id = env.register(Marketplace, ());
     let client = MarketplaceClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    let res = client.try_initialize(&admin);
+    let access_control = Address::generate(&env);
+    let res = client.try_initialize(&admin, &access_control);
     // Without authorized signer on `admin`, the host auth mechanism rejects the call.
     assert!(res.is_err());
 }
