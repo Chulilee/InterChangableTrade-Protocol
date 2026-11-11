@@ -154,10 +154,10 @@ authoritative signature.
 |---|---|
 | `access-control` | `admin: Address` |
 | `price-oracle` | `access_control: Address`, `max_deviation_bps: u32`, `freshness_threshold: u64` (seconds), `twap_window: u64` (seconds) |
-| `risk-management` | `pauser: Address`, `max_order_size: i128` |
+| `risk-management` | `admin: Address`, `access_control: Address`, `max_order_size: i128` |
 | `margining-liquidation` | `initial_margin_ratio: i128`, `maintenance_margin_ratio: i128`, `liquidation_incentive: i128` (all 1e18 fixed point), `price_oracle: Address` |
 | `asset-registry` | `admin: Address` |
-| `marketplace` | `admin: Address` |
+| `marketplace` | `admin: Address`, `access_control: Address` |
 | `matching-engine` | `admin: Address` |
 | `governance` | `admin: Address` |
 | `fee-commission` | `admin: Address`, `maker_fee_bps: i128`, `taker_fee_bps: i128` (≤ 1000 bps), `protocol_fee_bps: i128` (≤ 10000 bps), `protocol_treasury: Address` |

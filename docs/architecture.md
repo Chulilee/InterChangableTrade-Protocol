@@ -79,6 +79,33 @@ for reference; `matching-engine` is the canonical order book going forward.
 - Units: fees use basis points (`10_000 bps = 100%`); margin ratios and reward
   accumulators use 18-decimal fixed point (`1e18`).
 
+## Authorization model
+
+Privileged operations authorize the caller through the `access-control`
+contract. Contracts do not hold their own privileged addresses; at
+initialization each is given the `access-control` contract's address, and
+privileged entry points take `caller: Address`, sign with it
+(`require_auth()`), and require the caller to hold a role.
+
+The single implementation of that check lives in the shared `shared-auth`
+crate (`contracts/shared-auth`): `has_role` plus
+`require_role`/`require_admin`/`require_operator`/`require_pauser`/
+`require_governor`. `require_admin` is the helper every contract uses for
+admin-only operations. Role identifiers (`ADMIN`, `OPERATOR`, `PAUSER`,
+`GOVERNOR`) are exposed by `shared-auth` and must match the ones
+`access-control` hosts.
+
+Initializers take `(admin, access_control, ...)`: `admin` only signs the
+one-time deployment; ongoing privilege lives in `access-control`, where the
+deployer maps accounts to roles (`grant_role`/`revoke_role`/`set_role_admin`,
+themselves role-gated).
+
+Migrated so far: `price-oracle` (pre-existing), `marketplace`, and
+`risk-management`. Remaining local-admin contracts and their migration order
+are recorded in `docs/authorization-audit.md`, which also catalogs every
+contract's pattern. Non-privileged flows (escrow, settlement, margining,
+orderbook) stay on plain acting-party `require_auth()`.
+
 ## Decision records
 
 The significant architectural decisions behind this design are recorded in
@@ -106,9 +133,13 @@ end-to-end. Known gaps, in rough priority order:
    a placeholder; orders can be marked `Filled` without any tokens moving.
 3. **Fees are not attached to trades.** Nothing calls `fee-commission` when a
    trade settles.
-4. **Authorization is fragmented.** Only `price-oracle` consults
-   `access-control`; every other contract keeps its own local admin address,
-   and the PAUSER/GOVERNOR roles are unused.
+4. **Authorization was fragmented — now converging.** `price-oracle`,
+   `marketplace`, and `risk-management` authorize privileged operations
+   through `access-control` via the shared `shared-auth` crate (see the
+   [authorization model](#authorization-model)); other contracts still keep
+   their own local admin addresses. The `PAUSER` role now has its first
+   consumer (`risk-management`); `GOVERNOR` remains unused. See
+   `docs/authorization-audit.md`.
 5. **Governance executes into a vacuum.** Proposals write
    `Parameter(Symbol) -> i128` entries that no contract reads.
 6. **Margining now takes real token custody.** `margining-liquidation` pulls
