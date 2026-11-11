@@ -395,8 +395,8 @@ fn email_opt_in_triggers_email_event() {
     // Enable email opt-in.
     f.client.set_email_opt_in(&recipient, &true);
 
-    // Send a notification — the `new_notif` event is always published, and
-    // when email_opt_in is true an additional `email_pref` event is published.
+    // Send a notification — the `notified` event is always published, and
+    // when email_opt_in is true an additional `pref_set` event is published.
     // We verify the notification was created and the settings persist.
     let id = f.client.send(
         &f.admin,

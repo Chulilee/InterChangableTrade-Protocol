@@ -7,8 +7,15 @@
 //! failure recovery and retry semantics, and lifecycle event emission.
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, Address, Env, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
+    Vec,
 };
+
+/// Event symbols (max 9 chars for `symbol_short!`). Past-tense, snake_case.
+const EVT_SETTLEMENT_INITIATED: Symbol = symbol_short!("initiated");
+const EVT_SETTLEMENT_COMPLETED: Symbol = symbol_short!("completed");
+const EVT_SETTLEMENT_FAILED: Symbol = symbol_short!("failed");
+const EVT_SETTLEMENT_CANCELLED: Symbol = symbol_short!("cancelled");
 
 pub mod netting;
 pub use netting::NetObligation;
@@ -114,10 +121,8 @@ impl TradeSettlement {
         env.storage().persistent().set(&DataKey::Trade(id), &trade);
         env.storage().instance().set(&DataKey::NextId, &(id + 1));
 
-        env.events().publish(
-            (Symbol::new(&env, "SettlementInitiated"), id),
-            trade.clone(),
-        );
+        env.events()
+            .publish((EVT_SETTLEMENT_INITIATED, id), trade.clone());
 
         Ok(id)
     }
@@ -133,11 +138,9 @@ impl TradeSettlement {
             return Err(Error::NotPending);
         }
 
-        // Emit SettlementInitiated
-        env.events().publish(
-            (Symbol::new(&env, "SettlementInitiated"), id),
-            trade.clone(),
-        );
+        // Emit the SettlementInitiated event
+        env.events()
+            .publish((EVT_SETTLEMENT_INITIATED, id), trade.clone());
 
         // Pre-check balances using Soroban token interfaces
         let base_client = token::Client::new(&env, &trade.base_asset);
@@ -152,10 +155,8 @@ impl TradeSettlement {
             trade.failure_reason = Some(reason.clone());
             env.storage().persistent().set(&DataKey::Trade(id), &trade);
 
-            env.events().publish(
-                (Symbol::new(&env, "SettlementFailed"), id),
-                (reason, trade.clone()),
-            );
+            env.events()
+                .publish((EVT_SETTLEMENT_FAILED, id), (reason, trade.clone()));
 
             return Ok(trade);
         }
@@ -170,10 +171,8 @@ impl TradeSettlement {
         trade.failure_reason = None;
         env.storage().persistent().set(&DataKey::Trade(id), &trade);
 
-        env.events().publish(
-            (Symbol::new(&env, "SettlementCompleted"), id),
-            trade.clone(),
-        );
+        env.events()
+            .publish((EVT_SETTLEMENT_COMPLETED, id), trade.clone());
 
         Ok(trade)
     }
@@ -215,7 +214,7 @@ impl TradeSettlement {
         }
 
         env.events().publish(
-            (Symbol::new(&env, "SettlementInitiated"), batch_id),
+            (EVT_SETTLEMENT_INITIATED, batch_id),
             (batch_id, trade_ids.clone()),
         );
 
@@ -237,7 +236,7 @@ impl TradeSettlement {
                 }
 
                 env.events().publish(
-                    (Symbol::new(&env, "SettlementFailed"), batch_id),
+                    (EVT_SETTLEMENT_FAILED, batch_id),
                     (reason, batch_id, trade_ids.clone()),
                 );
 
@@ -268,10 +267,8 @@ impl TradeSettlement {
             status: SettlementStatus::Settled,
         };
 
-        env.events().publish(
-            (Symbol::new(&env, "SettlementCompleted"), batch_id),
-            result.clone(),
-        );
+        env.events()
+            .publish((EVT_SETTLEMENT_COMPLETED, batch_id), result.clone());
 
         Ok(result)
     }
@@ -316,10 +313,8 @@ impl TradeSettlement {
         trade.status = SettlementStatus::Cancelled;
         env.storage().persistent().set(&DataKey::Trade(id), &trade);
 
-        env.events().publish(
-            (Symbol::new(&env, "SettlementCancelled"), id),
-            trade.clone(),
-        );
+        env.events()
+            .publish((EVT_SETTLEMENT_CANCELLED, id), trade.clone());
 
         Ok(trade)
     }

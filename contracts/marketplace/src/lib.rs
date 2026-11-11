@@ -72,7 +72,7 @@ pub enum Error {
 
 const EVT_LISTED: Symbol = symbol_short!("listed");
 const EVT_FILLED: Symbol = symbol_short!("filled");
-const EVT_CANCEL: Symbol = symbol_short!("cancelled");
+const EVT_CANCELLED: Symbol = symbol_short!("cancelled");
 
 #[contract]
 pub struct Marketplace;
@@ -184,7 +184,7 @@ impl Marketplace {
             .persistent()
             .set(&DataKey::Listing(id), &listing);
 
-        env.events().publish((EVT_CANCEL, id), ());
+        env.events().publish((EVT_CANCELLED, id), ());
         Ok(())
     }
 

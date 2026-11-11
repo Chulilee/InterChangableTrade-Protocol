@@ -21,10 +21,10 @@ use soroban_sdk::{
 // Constants
 // ---------------------------------------------------------------------------
 
-const EVT_NOTIFICATION: Symbol = symbol_short!("new_notif");
+const EVT_NOTIFICATION: Symbol = symbol_short!("notified");
 const EVT_READ: Symbol = symbol_short!("read");
 const EVT_READ_ALL: Symbol = symbol_short!("read_all");
-const EVT_EMAIL_PREF: Symbol = symbol_short!("eml_pref");
+const EVT_EMAIL_PREF: Symbol = symbol_short!("pref_set");
 
 /// Hard upper bound on the number of notifications returned by a single
 /// paginated read. Keeps the invocation cost bounded no matter what page size
