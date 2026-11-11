@@ -8,7 +8,11 @@
 //! that check, so each contract does not grow its own drifting copy:
 //!
 //! ```ignore
-//! let access_control: Address = env.storage().instance().get(&DataKey::AccessControl).unwrap();
+//! let access_control: Address = env
+//!     .storage()
+//!     .instance()
+//!     .get(&DataKey::AccessControl)
+//!     .ok_or(AuthError::Unauthorized)?;
 //! shared_auth::require_admin(&env, &access_control, &caller)?;
 //! ```
 //!
