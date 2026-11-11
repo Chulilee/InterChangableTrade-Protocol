@@ -12,6 +12,7 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+access-control = { path = "../contracts/access-control" }
 marketplace = { path = "../contracts/marketplace" }
 escrow = { path = "../contracts/escrow" }
 trade-settlement = { path = "../contracts/trade-settlement" }

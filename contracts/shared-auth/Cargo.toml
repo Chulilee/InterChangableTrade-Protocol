@@ -1,0 +1,19 @@
+[package]
+name = "shared-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared access-control helpers for InterChangableTrade-Protocol contracts (issue #61)"
+
+# `rlib` only: this is a helper crate linked into the contracts that use it,
+# not a deployable contract, so no `cdylib` and no wasm is produced.
+[lib]
+crate-type = ["rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

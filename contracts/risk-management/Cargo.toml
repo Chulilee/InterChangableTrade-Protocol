@@ -11,6 +11,9 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+shared-auth = { path = "../shared-auth" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Tests deploy an access-control contract to grant roles from.
+access-control = { path = "../access-control" }

@@ -74,12 +74,12 @@ remain claimable.
 
 | Event      | Topics                       | Data                    |
 |------------|------------------------------|-------------------------|
-| `liqdep`   | `(owner, pool_id)`           | `(position_id, amount)` |
-| `liqwth`   | `(owner, position_id)`       | `amount`                |
-| `rwclaim`  | `(owner, position_id)`       | `amount`                |
-| `poolnew`  | `(pool_id)`                  | `Pool`                  |
-| `poolfund` | `(pool_id)`                  | `amount`                |
-| `rateset`  | `(pool_id)`                  | `(reward_rate, period_finish)` |
+| `deposited`   | `(owner, pool_id)`           | `(position_id, amount)` |
+| `withdrawn`   | `(owner, position_id)`       | `amount`                |
+| `claimed`  | `(owner, position_id)`       | `amount`                |
+| `created`  | `(pool_id)`                  | `Pool`                  |
+| `funded` | `(pool_id)`                  | `amount`                |
+| `rate_set`  | `(pool_id)`                  | `(reward_rate, period_finish)` |
 
 ## Sample reward computations
 

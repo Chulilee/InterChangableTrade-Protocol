@@ -419,7 +419,7 @@ fn test_trade_executed_event_contains_counterparties_and_market() {
                 .unwrap()
                 .try_into_val(&f.env)
                 .expect("topic 0 is not a symbol");
-            topic0 == symbol_short!("tradeexec")
+            topic0 == symbol_short!("executed")
         })
         .expect("EVT_TRADE_EXECUTED event not found");
 

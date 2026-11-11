@@ -24,6 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         contract:
+          - shared-auth
           - access-control
           - asset-registry
           - cross-chain-bridge

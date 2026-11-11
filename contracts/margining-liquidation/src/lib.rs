@@ -96,12 +96,12 @@ pub enum Error {
 }
 
 /// Event symbols.
-const EVT_COLLATERAL_DEPOSITED: Symbol = symbol_short!("colldep");
-const EVT_COLLATERAL_WITHDRAWN: Symbol = symbol_short!("collwth");
-const EVT_POSITION_OPENED: Symbol = symbol_short!("posopen");
-const EVT_POSITION_CLOSED: Symbol = symbol_short!("posclsd");
-const EVT_LIQUIDATION_TRIGGERED: Symbol = symbol_short!("liq");
-const EVT_MARK_PRICE_UPDATED: Symbol = symbol_short!("markprice");
+const EVT_COLLATERAL_DEPOSITED: Symbol = symbol_short!("deposited");
+const EVT_COLLATERAL_WITHDRAWN: Symbol = symbol_short!("withdrawn");
+const EVT_POSITION_OPENED: Symbol = symbol_short!("opened");
+const EVT_POSITION_CLOSED: Symbol = symbol_short!("closed");
+const EVT_LIQUIDATION_TRIGGERED: Symbol = symbol_short!("triggered");
+const EVT_MARK_PRICE_UPDATED: Symbol = symbol_short!("updated");
 
 /// Fixed-point scalar used for margin ratios and oracle prices (18 decimals).
 const FIXED_POINT_SCALE: i128 = 1_000_000_000_000_000_000;

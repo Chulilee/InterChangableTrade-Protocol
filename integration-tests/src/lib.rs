@@ -12,6 +12,7 @@
 //!    cross in the order book, the match emits a trade, and settlement
 //!    transfers the assets atomically.
 
+use access_control::{AccessControl, AccessControlClient};
 use escrow::{EscrowContract, EscrowContractClient, State};
 use marketplace::{Marketplace, MarketplaceClient, Status as ListingStatus};
 use matching_engine::{MatchingEngine, MatchingEngineClient, OrderSide};
@@ -61,15 +62,20 @@ fn setup() -> ProtocolFixture {
     let base_token = create_token(&env, &admin, &seller, 1_000);
     let quote_token = create_token(&env, &admin, &buyer, 10_000);
 
+    // Deploy access-control and grant the deployer the ADMIN role.
+    let ac_id = env.register(AccessControl, ());
+    let ac = AccessControlClient::new(&env, &ac_id);
+    ac.initialize(&admin);
+
     // Deploy marketplace with a risk manager wired in.
     let marketplace_id = env.register(Marketplace, ());
     let marketplace = MarketplaceClient::new(&env, &marketplace_id);
-    marketplace.initialize(&admin);
+    marketplace.initialize(&admin, &ac_id);
 
     let rm_id = env.register(RiskManager, ());
     let risk = RiskManagerClient::new(&env, &rm_id);
-    risk.initialize(&admin, &1_000_000);
-    marketplace.set_risk_manager(&rm_id);
+    risk.initialize(&admin, &ac_id, &1_000_000);
+    marketplace.set_risk_manager(&admin, &rm_id);
 
     // Deploy escrow.
     let escrow_id = env.register(EscrowContract, ());

@@ -126,12 +126,12 @@ pub enum Error {
     NothingToClaim = 9,
 }
 
-const EVT_LIQ_DEPOSITED: Symbol = symbol_short!("liqdep");
-const EVT_LIQ_WITHDRAWN: Symbol = symbol_short!("liqwth");
-const EVT_REWARDS_CLAIMED: Symbol = symbol_short!("rwclaim");
-const EVT_POOL_CREATED: Symbol = symbol_short!("poolnew");
-const EVT_POOL_FUNDED: Symbol = symbol_short!("poolfund");
-const EVT_RATE_SET: Symbol = symbol_short!("rateset");
+const EVT_LIQ_DEPOSITED: Symbol = symbol_short!("deposited");
+const EVT_LIQ_WITHDRAWN: Symbol = symbol_short!("withdrawn");
+const EVT_REWARDS_CLAIMED: Symbol = symbol_short!("claimed");
+const EVT_POOL_CREATED: Symbol = symbol_short!("created");
+const EVT_POOL_FUNDED: Symbol = symbol_short!("funded");
+const EVT_RATE_SET: Symbol = symbol_short!("rate_set");
 
 #[contract]
 pub struct LiquidityIncentives;

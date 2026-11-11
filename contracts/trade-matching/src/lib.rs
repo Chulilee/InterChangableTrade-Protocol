@@ -147,11 +147,11 @@ pub enum Error {
 // Events
 // ---------------------------------------------------------------------------
 
-const EVT_LISTING_REGISTERED: Symbol = symbol_short!("lst_reg");
-const EVT_MATCHES_GENERATED: Symbol = symbol_short!("match_gen");
-const EVT_PROPOSAL_CREATED: Symbol = symbol_short!("prop_crt");
-const EVT_PROPOSAL_ACCEPTED: Symbol = symbol_short!("prop_acc");
-const EVT_PROPOSAL_REJECTED: Symbol = symbol_short!("prop_rjt");
+const EVT_LISTING_REGISTERED: Symbol = symbol_short!("listed");
+const EVT_MATCHES_GENERATED: Symbol = symbol_short!("generated");
+const EVT_PROPOSAL_CREATED: Symbol = symbol_short!("proposed");
+const EVT_PROPOSAL_ACCEPTED: Symbol = symbol_short!("accepted");
+const EVT_PROPOSAL_REJECTED: Symbol = symbol_short!("rejected");
 
 // ---------------------------------------------------------------------------
 // Contract

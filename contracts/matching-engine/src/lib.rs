@@ -132,11 +132,11 @@ pub enum Error {
 }
 
 // Event symbols
-const EVT_TRADE_EXECUTED: Symbol = symbol_short!("tradeexec");
-const EVT_ORDER_PARTIAL: Symbol = symbol_short!("ordpart");
-const EVT_ORDER_FILLED: Symbol = symbol_short!("ordfill");
-const EVT_ORDER_PLACED: Symbol = symbol_short!("ordplace");
-const EVT_ORDER_CANCEL: Symbol = symbol_short!("ordcancel");
+const EVT_TRADE_EXECUTED: Symbol = symbol_short!("executed");
+const EVT_ORDER_PARTIAL: Symbol = symbol_short!("partial");
+const EVT_ORDER_FILLED: Symbol = symbol_short!("filled");
+const EVT_ORDER_PLACED: Symbol = symbol_short!("placed");
+const EVT_ORDER_CANCEL: Symbol = symbol_short!("cancelled");
 
 #[contract]
 pub struct MatchingEngine;

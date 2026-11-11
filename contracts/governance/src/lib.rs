@@ -1,7 +1,15 @@
 #![no_std]
 #![allow(clippy::too_many_arguments)]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
+};
+
+/// Event symbols (max 9 chars for `symbol_short!`). Past-tense, snake_case.
+const EVT_PROPOSAL_CREATED: Symbol = symbol_short!("proposed");
+const EVT_VOTE_CAST: Symbol = symbol_short!("voted");
+const EVT_PROPOSAL_QUEUED: Symbol = symbol_short!("queued");
+const EVT_PROPOSAL_EXECUTED: Symbol = symbol_short!("executed");
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -137,7 +145,7 @@ impl Governance {
 
         env.events().publish(
             (
-                Symbol::new(&env, "ProposalCreated"),
+                EVT_PROPOSAL_CREATED,
                 proposal_id,
                 proposer,
                 description,
@@ -195,10 +203,8 @@ impl Governance {
             });
         }
         env.storage().persistent().set(&votes_key, &votes);
-        env.events().publish(
-            (Symbol::new(&env, "VoteCast"), proposal_id, voter, support),
-            weight,
-        );
+        env.events()
+            .publish((EVT_VOTE_CAST, proposal_id, voter, support), weight);
         Ok(())
     }
 
@@ -228,7 +234,7 @@ impl Governance {
             .persistent()
             .set(&DataKey::ProposalQueue(proposal_id), &true);
         env.events().publish(
-            (Symbol::new(&env, "ProposalQueued"), proposal_id, caller),
+            (EVT_PROPOSAL_QUEUED, proposal_id, caller),
             (now, metadata.timelock),
         );
         Ok(())
@@ -261,10 +267,8 @@ impl Governance {
             &DataKey::Parameter(metadata.target.clone()),
             &metadata.value,
         );
-        env.events().publish(
-            (Symbol::new(&env, "ProposalExecuted"), proposal_id, caller),
-            metadata.value,
-        );
+        env.events()
+            .publish((EVT_PROPOSAL_EXECUTED, proposal_id, caller), metadata.value);
         Ok(())
     }
 

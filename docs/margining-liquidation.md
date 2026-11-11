@@ -73,7 +73,7 @@ the liquidator.
      available.
 5. The user's `collateral_balances` are zeroed and their position list is
    cleared.
-6. A `liq` event is emitted with the oracle-valued incentive actually paid.
+6. A `triggered` event is emitted with the oracle-valued incentive actually paid.
 
 ## Errors
 
@@ -93,9 +93,9 @@ the liquidator.
 
 | Event                   | Topics                          | Data                  |
 |-------------------------|---------------------------------|-----------------------|
-| `colldep`               | (user, asset)                   | amount                |
-| `collwth`               | (user, asset)                   | amount                |
-| `posopen`               | (owner)                         | position              |
-| `posclsd`               | (owner, position_id)            | ()                    |
-| `liq`                   | (user, liquidator)              | incentive_paid_value  |
-| `markprice`             | (position_id)                   | new_mark_price        |
+| `deposited`               | (user, asset)                   | amount                |
+| `withdrawn`               | (user, asset)                   | amount                |
+| `opened`               | (owner)                         | position              |
+| `closed`               | (owner, position_id)            | ()                    |
+| `triggered`                   | (user, liquidator)              | incentive_paid_value  |
+| `updated`             | (position_id)                   | new_mark_price        |

@@ -7,6 +7,7 @@
 //! settlement of funds/assets is handled by the escrow and settlement
 //! contracts.
 
+use shared_auth::require_admin;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, IntoVal,
     Symbol,
@@ -16,8 +17,8 @@ use soroban_sdk::{
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    /// The admin authorized to administer the marketplace.
-    Admin,
+    /// The access-control contract authorizing admin operations.
+    AccessControl,
     /// The address of the risk management contract.
     RiskManager,
     /// Auto-incrementing id for the next listing.
@@ -65,36 +66,43 @@ pub enum Error {
     NotSeller = 6,
     SelfFill = 7,
     RiskManagerNotConfigured = 8,
+    /// The caller does not hold the required access-control role.
+    NotAuthorized = 9,
 }
 
 const EVT_LISTED: Symbol = symbol_short!("listed");
 const EVT_FILLED: Symbol = symbol_short!("filled");
-const EVT_CANCEL: Symbol = symbol_short!("cancelled");
+const EVT_CANCELLED: Symbol = symbol_short!("cancelled");
 
 #[contract]
 pub struct Marketplace;
 
 #[contractimpl]
 impl Marketplace {
-    /// Initialize the marketplace with an admin. Callable once.
-    pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+    /// Initialize the marketplace with an admin (deploy signer) and the
+    /// access-control contract address. Callable once.
+    pub fn initialize(env: Env, admin: Address, access_control: Address) -> Result<(), Error> {
         admin.require_auth();
-        if env.storage().instance().has(&DataKey::Admin) {
+        if env.storage().instance().has(&DataKey::AccessControl) {
             return Err(Error::AlreadyInitialized);
         }
-        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::AccessControl, &access_control);
         env.storage().instance().set(&DataKey::NextId, &0u64);
         Ok(())
     }
 
-    pub fn set_risk_manager(env: Env, risk_manager: Address) -> Result<(), Error> {
+    /// Configure the risk-management contract. Requires the caller to hold
+    /// the ADMIN role in the access-control contract.
+    pub fn set_risk_manager(env: Env, caller: Address, risk_manager: Address) -> Result<(), Error> {
         Self::ensure_init(&env)?;
-        let admin: Address = env
+        let access_control: Address = env
             .storage()
             .instance()
-            .get(&DataKey::Admin)
+            .get(&DataKey::AccessControl)
             .ok_or(Error::NotInitialized)?;
-        admin.require_auth();
+        require_admin(&env, &access_control, &caller).map_err(|_| Error::NotAuthorized)?;
         env.storage()
             .instance()
             .set(&DataKey::RiskManager, &risk_manager);
@@ -176,7 +184,7 @@ impl Marketplace {
             .persistent()
             .set(&DataKey::Listing(id), &listing);
 
-        env.events().publish((EVT_CANCEL, id), ());
+        env.events().publish((EVT_CANCELLED, id), ());
         Ok(())
     }
 
@@ -189,7 +197,7 @@ impl Marketplace {
     }
 
     fn ensure_init(env: &Env) -> Result<(), Error> {
-        if env.storage().instance().has(&DataKey::Admin) {
+        if env.storage().instance().has(&DataKey::AccessControl) {
             Ok(())
         } else {
             Err(Error::NotInitialized)

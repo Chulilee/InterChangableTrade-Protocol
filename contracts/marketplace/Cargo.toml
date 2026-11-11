@@ -11,9 +11,12 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+shared-auth = { path = "../shared-auth" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Tests deploy an access-control contract to grant the ADMIN role from.
+access-control = { path = "../access-control" }
 # Only needed by tests, to deploy a RiskManager the marketplace calls into.
 # The contract itself invokes risk-management by address (env.invoke_contract),
 # so it must NOT be a normal dependency (that would link risk-management's

@@ -802,6 +802,7 @@ checksum = "8e04e2fd2b8188ea827b32ef11de88377086d690286ab35747ef7f9bf3ccb590"
 name = "integration-tests"
 version = "0.1.0"
 dependencies = [
+ "access-control",
  "escrow",
  "marketplace",
  "matching-engine",
@@ -894,6 +895,7 @@ name = "marketplace"
 version = "0.1.0"
 dependencies = [
  "risk-management",
+ "shared-auth",
  "soroban-sdk",
 ]
 
@@ -1039,6 +1041,7 @@ name = "price-oracle"
 version = "0.1.0"
 dependencies = [
  "access-control",
+ "shared-auth",
  "soroban-sdk",
 ]
 
@@ -1133,6 +1136,7 @@ dependencies = [
 name = "risk-management"
 version = "0.1.0"
 dependencies = [
+ "shared-auth",
  "soroban-sdk",
 ]
 
@@ -1150,6 +1154,13 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "shared-auth"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
 
 [[package]]
 name = "schemars"

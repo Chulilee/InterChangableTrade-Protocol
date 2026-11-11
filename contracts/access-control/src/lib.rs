@@ -23,8 +23,8 @@ pub enum Error {
     RoleAlreadyExists = 5,
 }
 
-const EVT_ROLE_GRANTED: Symbol = symbol_short!("role_grnt");
-const EVT_ROLE_REVOKED: Symbol = symbol_short!("role_rvkd");
+const EVT_ROLE_GRANTED: Symbol = symbol_short!("granted");
+const EVT_ROLE_REVOKED: Symbol = symbol_short!("revoked");
 
 const ROLE_ADMIN: Symbol = symbol_short!("ADMIN");
 const ROLE_OPERATOR: Symbol = symbol_short!("OPERATOR");
