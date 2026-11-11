@@ -13,7 +13,7 @@ token/event plumbing, but it has no price-time priority, no partial fills, no
 market scoping, and no execution semantics.
 
 `matching-engine` was built as the production book: per-market (asset, quote)
-books with price-time priority, partial fills, match simulation, and `tradeexec`
+books with price-time priority, partial fills, match simulation, and `executed`
 events. The README and architecture doc both list `matching-engine` as the
 canonical order book and `orderbook` as a legacy scaffold kept for reference.
 

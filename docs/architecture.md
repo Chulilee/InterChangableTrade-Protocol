@@ -54,7 +54,7 @@ Admin  ───────────────────────▶ 
 
 The `matching-engine` maintains a per-market (asset, quote) order book with
 price-time priority, partial fills, and match simulation. Executed matches are
-emitted as `tradeexec` events; on-chain settlement of matched trades is not yet
+emitted as `executed` events; on-chain settlement of matched trades is not yet
 wired to `trade-settlement` (see "Open integration gaps").
 
 `orderbook` is an earlier, simpler scaffold (a flat, unscoped order list) kept
@@ -68,6 +68,10 @@ for reference; `matching-engine` is the canonical order book going forward.
   auto-incrementing `u64` ids.
 - Mutating entry points call `require_auth()` on the relevant party, and every
   state transition publishes an event so off-chain indexers can follow along.
+  Event symbols follow one convention (lower snake_case, past tense, ≤ 9
+  characters, defined once per contract as `EVT_*`); see the
+  [event naming rules](CONTRIBUTING.md#event-naming) and the per-contract
+  tables there.
 - One-time `initialize()` entry points **require auth from the admin/role
   address passed in** (the `risk-management` pattern): deploy tooling must sign
   with the account it passes as `admin`. Contracts without an admin parameter

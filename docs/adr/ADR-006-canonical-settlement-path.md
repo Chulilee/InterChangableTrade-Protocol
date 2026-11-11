@@ -58,7 +58,7 @@ registry  ->  listing/marketplace  ->  escrow (deposit lock)  ->  settlement  ->
 3. **Escrow** — the buyer locks funds for the agreed amount before committing
    to the trade (deposit accounting only).
 4. **Settlement** — the actual exchange happens in `trade-settlement`, which
-   executes the bilateral transfer and emits a `SettlementCompleted` event.
+   executes the bilateral transfer and emits a `completed` event.
 5. **Treasury / fees** — `fee-commission` accrues and distributes protocol
    and maker/taker fees; distribution is permissionless because recipients
    and the treasury are fixed by governance.

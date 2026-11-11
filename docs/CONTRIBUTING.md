@@ -29,7 +29,8 @@ rustup target add wasm32-unknown-unknown
 
 ## Conventions
 
-- Keep contracts `#![no_std]`; only depend on `soroban-sdk`.
+- Keep contracts `#![no_std]`; only depend on `soroban-sdk` (and `shared-auth`
+  where role-based authorization is required).
 - Return typed `#[contracterror]` errors instead of panicking.
 - Avoid `panic!()` and `unwrap()` in contract source; use `Result`/`ok_or(...)?` or
   Soroban `panic_with_error!` only where a non-`Result` contract API must trap.
@@ -37,6 +38,51 @@ rustup target add wasm32-unknown-unknown
 - Follow the existing module layout: `src/lib.rs` for the contract, `src/test.rs`
   for its tests.
 - Format with `cargo fmt` and keep `cargo clippy` warning-free.
+
+## Event naming
+
+All contracts emit event symbols with one uniform convention so off-chain
+indexers and analytics can parse events without per-contract special cases:
+
+- **lower snake_case** (e.g. `rate_set`, `read_all`) — never `CamelCase`,
+  never abbreviations like `tradeexec`.
+- **Past tense** — events report what happened: `listed`, `filled`,
+  `executed`, `refunded`. Where no ≤ 9-character past-tense atom exists for a
+  partial operation, the nearest unambiguous state word is used
+  (`matching-engine` emits `partial` for a partial fill).
+- **≤ 9 characters** — events are built with `symbol_short!`, which rejects
+  longer symbols at compile time.
+- **Defined once per contract** as `EVT_*` constants (e.g. `const EVT_FUNDED:
+  Symbol = symbol_short!("funded")`), referenced by name in `publish(...)`
+  calls, no exceptions — `trade-settlement` and `governance` follow the same
+  pattern.
+
+Current assignments (contract → events):
+
+| Contract | Events |
+| --- | --- |
+| `access-control` | `granted`, `revoked` |
+| `asset-registry` | `added`, `removed` |
+| `escrow` | `funded`, `released`, `refunded` |
+| `fee-commission` | `collected`, `paid`, `cfg_set`, `scheduled`, `exempted` |
+| `liquidity-incentives` | `deposited`, `withdrawn`, `claimed`, `created`, `funded`, `rate_set` |
+| `margining-liquidation` | `deposited`, `withdrawn`, `opened`, `closed`, `triggered`, `updated` |
+| `marketplace` | `listed`, `filled`, `cancelled` |
+| `matching-engine` | `placed`, `filled`, `partial`, `cancelled`, `executed` |
+| `notification` | `notified`, `read`, `read_all`, `pref_set` |
+| `price-oracle` | `updated`, `changed` |
+| `risk-management` | `paused`, `unpaused`, `limit_set` |
+| `trade-matching` | `listed`, `generated`, `proposed`, `accepted`, `rejected` |
+| `trade-settlement` | `initiated`, `completed`, `failed`, `cancelled` |
+| `governance` | `proposed`, `voted`, `queued`, `executed` |
+| `orderbook` (legacy) | `(order, placed)`, `(order, cancelled)`, `(order, updated)` |
+| `cross-chain-bridge` | none emitted |
+
+When renaming or adding an event, update this table, the contract's `EVT_*`
+constants, any indexer-facing tooling that consumes the symbol, and the
+relevant doc's event table (e.g. `docs/fee-commission.md`,
+`docs/liquidity-incentives.md`, `docs/margining-liquidation.md`) in the same
+change.
 
 ## Release Process
 

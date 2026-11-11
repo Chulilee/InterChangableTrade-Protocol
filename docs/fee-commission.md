@@ -63,11 +63,11 @@ without holding admin keys.
 
 | Event        | Topics                        | Data                       |
 |--------------|-------------------------------|----------------------------|
-| `feecollct`  | `(payer, asset)`              | `fee: i128`                |
-| `feedistr`   | `(asset)`                     | `total: i128`              |
-| `cfgset`     | `()`                          | `FeeConfig`                |
-| `cfgsched`   | `()`                          | `(FeeConfig, activate_at)` |
-| `exemptset`  | `(address)`                   | `exempt: bool`             |
+| `collected`  | `(payer, asset)`              | `fee: i128`                |
+| `paid`   | `(asset)`                     | `total: i128`              |
+| `cfg_set`     | `()`                          | `FeeConfig`                |
+| `scheduled`   | `()`                          | `(FeeConfig, activate_at)` |
+| `exempted`  | `(address)`                   | `exempt: bool`             |
 
 ## Example
 
