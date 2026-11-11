@@ -1,7 +1,8 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use access_control::{AccessControl, AccessControlClient};
+use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};
 
 struct Fixture {
     env: Env,
@@ -14,11 +15,20 @@ struct Fixture {
 fn setup() -> Fixture {
     let env = Env::default();
     env.mock_all_auths();
+
+    // Deploy the access-control contract the risk manager authorizes against,
+    // grant the PAUSER role to the pauser account.
+    let ac_id = env.register(AccessControl, ());
+    let ac = AccessControlClient::new(&env, &ac_id);
+    let admin = Address::generate(&env);
+    ac.initialize(&admin);
+    let pauser = Address::generate(&env);
+    ac.grant_role(&symbol_short!("PAUSER"), &pauser, &admin);
+
     let contract_id = env.register(RiskManager, ());
     let client = RiskManagerClient::new(&env, &contract_id);
-    let pauser = Address::generate(&env);
     let trader = Address::generate(&env);
-    client.initialize(&pauser, &1_000);
+    client.initialize(&admin, &ac_id, &1_000);
     Fixture {
         env,
         client,

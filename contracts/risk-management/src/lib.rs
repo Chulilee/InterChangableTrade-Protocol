@@ -1,5 +1,6 @@
 #![no_std]
 
+use shared_auth::require_pauser;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol,
 };
@@ -9,7 +10,8 @@ use soroban_sdk::{
 pub enum DataKey {
     MarketPaused,
     MaxOrderSize,
-    Pauser,
+    /// Address of the access-control contract that holds the PAUSER role.
+    AccessControl,
     CumulativeExposure(Address),
 }
 
@@ -33,12 +35,19 @@ pub struct RiskManager;
 
 #[contractimpl]
 impl RiskManager {
-    pub fn initialize(env: Env, pauser: Address, max_order_size: i128) -> Result<(), RiskError> {
-        if env.storage().instance().has(&DataKey::Pauser) {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        access_control: Address,
+        max_order_size: i128,
+    ) -> Result<(), RiskError> {
+        admin.require_auth();
+        if env.storage().instance().has(&DataKey::AccessControl) {
             return Err(RiskError::Unauthorized);
         }
-        pauser.require_auth();
-        env.storage().instance().set(&DataKey::Pauser, &pauser);
+        env.storage()
+            .instance()
+            .set(&DataKey::AccessControl, &access_control);
         env.storage().instance().set(&DataKey::MarketPaused, &false);
         env.storage()
             .instance()
@@ -47,50 +56,29 @@ impl RiskManager {
     }
 
     pub fn pause_market(env: Env, caller: Address) -> Result<(), RiskError> {
-        caller.require_auth();
-        let pauser: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Pauser)
-            .ok_or(RiskError::NotInitialized)?;
-        if caller != pauser {
-            return Err(RiskError::Unauthorized);
-        }
+        let access_control = Self::access_control(&env)?;
+        require_pauser(&env, &access_control, &caller).map_err(|_| RiskError::Unauthorized)?;
         env.storage().instance().set(&DataKey::MarketPaused, &true);
-        env.events().publish((EVT_MKT_PAUSED,), pauser);
+        env.events().publish((EVT_MKT_PAUSED,), caller);
         Ok(())
     }
 
     pub fn unpause_market(env: Env, caller: Address) -> Result<(), RiskError> {
-        caller.require_auth();
-        let pauser: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Pauser)
-            .ok_or(RiskError::NotInitialized)?;
-        if caller != pauser {
-            return Err(RiskError::Unauthorized);
-        }
+        let access_control = Self::access_control(&env)?;
+        require_pauser(&env, &access_control, &caller).map_err(|_| RiskError::Unauthorized)?;
         env.storage().instance().set(&DataKey::MarketPaused, &false);
-        env.events().publish((EVT_MKT_UNPAUS,), pauser);
+        env.events().publish((EVT_MKT_UNPAUS,), caller);
         Ok(())
     }
 
     pub fn set_limit(env: Env, caller: Address, max_order_size: i128) -> Result<(), RiskError> {
-        caller.require_auth();
-        let pauser: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Pauser)
-            .ok_or(RiskError::NotInitialized)?;
-        if caller != pauser {
-            return Err(RiskError::Unauthorized);
-        }
+        let access_control = Self::access_control(&env)?;
+        require_pauser(&env, &access_control, &caller).map_err(|_| RiskError::Unauthorized)?;
         env.storage()
             .instance()
             .set(&DataKey::MaxOrderSize, &max_order_size);
         env.events()
-            .publish((EVT_LIM_UPDATED,), (pauser, max_order_size));
+            .publish((EVT_LIM_UPDATED,), (caller, max_order_size));
         Ok(())
     }
 
@@ -136,6 +124,13 @@ impl RiskManager {
             .persistent()
             .get(&DataKey::CumulativeExposure(trader))
             .unwrap_or(0)
+    }
+
+    fn access_control(env: &Env) -> Result<Address, RiskError> {
+        env.storage()
+            .instance()
+            .get(&DataKey::AccessControl)
+            .ok_or(RiskError::NotInitialized)
     }
 }
 
