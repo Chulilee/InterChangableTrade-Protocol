@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@solidjs/testing-library';
 import { Router } from '@solidjs/router';
-import { AuthProvider } from '../../../contexts/AuthContext';
 import { ListingCreate } from '../ListingCreate';
 import { createListing } from '../../../api/listings';
 
@@ -9,12 +8,16 @@ vi.mock('../../../api/listings', async () => ({
   createListing: vi.fn()
 }));
 
+vi.mock('../../../hooks/useApi', () => ({
+  useApi: () => ({
+    apiRequest: vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
+  }),
+}));
+
 function renderListingCreate() {
   return render(() => (
     <Router url="/listings/new">
-      <AuthProvider>
-        <ListingCreate />
-      </AuthProvider>
+      <ListingCreate />
     </Router>
   ));
 }
@@ -22,11 +25,8 @@ function renderListingCreate() {
 describe('ListingCreate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
-    localStorage.setItem(
-      'auth_tokens',
-      JSON.stringify({ accessToken: 'token', refreshToken: 'refresh', expiresAt: Date.now() + 60 * 60 * 1000 })
-    );
+    localStorage.clear();
+    sessionStorage.clear();
   });
 
   it('calls createListing with the validated form values on submit', async () => {

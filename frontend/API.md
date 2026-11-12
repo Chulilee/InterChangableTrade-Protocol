@@ -1,11 +1,11 @@
-# Frontend ↔ Backend API Contract
+﻿# Frontend â†” Backend API Contract
 
 The frontend in this repository talks to a remote REST API. This document
 describes **every endpoint the frontend calls**: method, path, parameters,
 request/response bodies, auth requirements and error handling. It is the
 contract an implementing backend (InterChangableTrade-Core) must satisfy, and
 it is derived from the source of truth in `frontend/src/api/*` and
-`frontend/src/contexts/AuthContext.tsx` — if you change either, update this
+`frontend/src/contexts/AuthContext.tsx` â€” if you change either, update this
 file in the same PR.
 
 Unless stated otherwise:
@@ -34,7 +34,7 @@ JWT access tokens + refresh tokens:
 
 1. `POST /auth/login` or `POST /auth/register` returns `{ user, accessToken, refreshToken, expiresIn }`.
 2. The frontend persists `{ accessToken, refreshToken, expiresAt }` in
-   `localStorage["auth_tokens"]` with `expiresAt = now + expiresIn * 1000`.
+   `in-memory secure storage["in-memory auth session"]` with `expiresAt = now + expiresIn * 1000`.
 3. Authenticated calls build an `apiRequest` via `useApi()` (`src/hooks/useApi.ts`):
    - Proactively refreshes when the access token is within 5 minutes of
      `expiresAt` (`TOKEN_REFRESH_THRESHOLD = 5 * 60 * 1000`).
@@ -72,7 +72,7 @@ Registers a new user and signs them in.
 - **Auth:** none (refresh token in body)
 - **Body:** `{ "refreshToken": string }`
 - **Response `200 OK`:** `{ "accessToken": string, "refreshToken"?: string, "expiresIn": number }`
-  (`refreshToken` optional — the frontend keeps the old one when absent.)
+  (`refreshToken` optional â€” the frontend keeps the old one when absent.)
 - **Errors:** `401` refresh token rejected.
 
 #### `POST /auth/logout`
@@ -95,7 +95,7 @@ Registers a new user and signs them in.
 - **Body:** `{ "token": string, "newPassword": string }`
 - **Response `200 OK`:** empty.
 
-## Listings — `/listings`
+## Listings â€” `/listings`
 
 Types are defined in `frontend/src/types/listing.ts` (`Listing`, `ListingInput`, `ListingsQuery`, `PaginatedListings`).
 
@@ -167,7 +167,7 @@ Deletes a listing. **Auth required** (owner or admin).
 
 - **Response `200 OK` / `204 No Content`:** empty.
 
-## Users — `/users`
+## Users â€” `/users`
 
 #### `GET /users/me`
 Returns the authenticated user's profile. **Auth required.**
@@ -183,7 +183,7 @@ Returns the authenticated user's profile. **Auth required.**
   }
   ```
   Note: `avatarUrl` is `null` when unset; `displayName` is the current display
-  name (may differ from the auth payload `name` — the profile is the source of
+  name (may differ from the auth payload `name` â€” the profile is the source of
   truth after updates).
 
 #### `PATCH /users/me`
@@ -210,14 +210,14 @@ Replaces notification preferences. **Auth required.**
 #### `POST /users/me/avatar`
 Uploads an avatar as `multipart/form-data`. **Auth required.**
 
-- **Body:** multipart form with a single field `avatar` containing the image file (Blob). The browser must supply the `Content-Type: multipart/form-data; boundary=...` header — the frontend deliberately does **not** set `Content-Type` for this call.
+- **Body:** multipart form with a single field `avatar` containing the image file (Blob). The browser must supply the `Content-Type: multipart/form-data; boundary=...` header â€” the frontend deliberately does **not** set `Content-Type` for this call.
 - **Response `200 OK` (`AvatarUploadResult`):**
   ```json
   { "avatarUrl": "https://cdn.example.com/avatars/u_123.png" }
   ```
 - **Errors:** `400` unsupported/oversized image, `401`.
 
-## Admin — `/admin`
+## Admin â€” `/admin`
 
 All admin endpoints require a bearer token whose user carries `roles` including
 `"admin"`. The frontend additionally guards admin routes (see
@@ -334,7 +334,7 @@ backend should honor:
 | `200/201` | OK/created                  | parse JSON                                 |
 | `204`  | No content                    | empty body, success                        |
 | `400`  | Validation failed             | throws `Error(message)`                    |
-| `401`  | Unauthenticated/token expired | `apiRequest` refreshes once and retries; else throws `Session expired…` |
+| `401`  | Unauthenticated/token expired | `apiRequest` refreshes once and retries; else throws `Session expiredâ€¦` |
 | `403`  | Forbidden (role/ban)          | throws `Error(message)`                    |
 | `404`  | Not found                     | throws `Error(message)`                    |
 | `409`  | Conflict (e.g. duplicate email) | throws `Error(message)`                   |
