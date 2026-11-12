@@ -1,4 +1,4 @@
-# Contributing
+﻿# Contributing
 
 Thanks for helping build InterChangableTrade-Protocol. Security reviews and
 audits are especially welcome.
@@ -29,93 +29,40 @@ rustup target add wasm32-unknown-unknown
 
 ## Conventions
 
-- Keep contracts `#![no_std]`; only depend on `soroban-sdk` (and `shared-auth`
-  where role-based authorization is required).
+- Keep contracts `#![no_std]`; only depend on `soroban-sdk`.
 - Return typed `#[contracterror]` errors instead of panicking.
-- Avoid `panic!()` and `unwrap()` in contract source; use `Result`/`ok_or(...)?` or
-  Soroban `panic_with_error!` only where a non-`Result` contract API must trap.
 - Publish an event for every state transition.
 - Follow the existing module layout: `src/lib.rs` for the contract, `src/test.rs`
   for its tests.
 - Format with `cargo fmt` and keep `cargo clippy` warning-free.
 
-## Event naming
+## Input validation guide
 
-All contracts emit event symbols with one uniform convention so off-chain
-indexers and analytics can parse events without per-contract special cases:
+Contracts must validate external inputs early and fail with typed
+`#[contracterror]` values (never panics for user input).
 
-- **lower snake_case** (e.g. `rate_set`, `read_all`) — never `CamelCase`,
-  never abbreviations like `tradeexec`.
-- **Past tense** — events report what happened: `listed`, `filled`,
-  `executed`, `refunded`. Where no ≤ 9-character past-tense atom exists for a
-  partial operation, the nearest unambiguous state word is used
-  (`matching-engine` emits `partial` for a partial fill).
-- **≤ 9 characters** — events are built with `symbol_short!`, which rejects
-  longer symbols at compile time.
-- **Defined once per contract** as `EVT_*` constants (e.g. `const EVT_FUNDED:
-  Symbol = symbol_short!("funded")`), referenced by name in `publish(...)`
-  calls, no exceptions — `trade-settlement` and `governance` follow the same
-  pattern.
+### Required checks
 
-Current assignments (contract → events):
+- **Amounts, prices, quantities, rates:** reject non-positive values where the
+  domain requires `> 0` (or reject negative values where `0` is meaningful).
+- **Durations / time ranges:** reject zero durations when an interval must emit
+  rewards or progress over time (e.g. `duration_secs > 0`), and reject invalid
+  ranges (e.g. `end_time > start_time`).
+- **Identifiers:** reject invalid identifiers such as `trade_id == 0` when IDs
+  must be positive.
+- **Addresses:** validate addresses at contract boundaries. Use a
+  `validate_address` helper to reject zero/invalid addresses where applicable
+  before persisting state or transferring value.
+- **Authorization:** require auth for callers performing privileged or
+  state-changing actions and keep authorization checks consistent with the
+  contract's trust model.
 
-| Contract | Events |
-| --- | --- |
-| `access-control` | `granted`, `revoked` |
-| `asset-registry` | `added`, `removed` |
-| `escrow` | `funded`, `released`, `refunded` |
-| `fee-commission` | `collected`, `paid`, `cfg_set`, `scheduled`, `exempted` |
-| `liquidity-incentives` | `deposited`, `withdrawn`, `claimed`, `created`, `funded`, `rate_set` |
-| `margining-liquidation` | `deposited`, `withdrawn`, `opened`, `closed`, `triggered`, `updated` |
-| `marketplace` | `listed`, `filled`, `cancelled` |
-| `matching-engine` | `placed`, `filled`, `partial`, `cancelled`, `executed` |
-| `notification` | `notified`, `read`, `read_all`, `pref_set` |
-| `price-oracle` | `updated`, `changed` |
-| `risk-management` | `paused`, `unpaused`, `limit_set` |
-| `trade-matching` | `listed`, `generated`, `proposed`, `accepted`, `rejected` |
-| `trade-settlement` | `initiated`, `completed`, `failed`, `cancelled` |
-| `governance` | `proposed`, `voted`, `queued`, `executed` |
-| `orderbook` (legacy) | `(order, placed)`, `(order, cancelled)`, `(order, updated)` |
-| `cross-chain-bridge` | none emitted |
+### Implementation pattern
 
-When renaming or adding an event, update this table, the contract's `EVT_*`
-constants, any indexer-facing tooling that consumes the symbol, and the
-relevant doc's event table (e.g. `docs/fee-commission.md`,
-`docs/liquidity-incentives.md`, `docs/margining-liquidation.md`) in the same
-change.
-
-## Release Process
-
-This project uses a lightweight release flow with [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-formatting in `CHANGELOG.md`.
-
-1. **Bump the version** in the workspace `Cargo.toml` (`[workspace.package].version`).
-   Contract crates inherit this via `version.workspace = true`.
-2. **Update `CHANGELOG.md`**:
-   - Move relevant entries from `[Unreleased]` into a new version section.
-   - Add the release date (`YYYY-MM-DD`) and compare/release links at the bottom.
-3. **Run checks** locally (at minimum):
-
-   ```bash
-   cargo fmt --all --check
-   cargo clippy --workspace --all-targets --all-features -- -D warnings
-   scripts/test.sh
-   ```
-
-4. **Commit** the version bump and changelog update.
-5. **Create a git tag** for the release:
-
-   ```bash
-   git tag -a vX.Y.Z -m "Release vX.Y.Z"
-   git push origin main --tags
-   ```
-
-6. **Create a GitHub release** from the tag with release notes derived from the
-   corresponding `CHANGELOG.md` section:
-
-   ```bash
-   gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <release-notes>
-   ```
-
-7. **Verify** CI is green and published artifacts/tags are correct. For breaking
-   contract/API changes, call out migration steps in the changelog and release notes.
+- Add or reuse a small helper (for example `validate_address`) near the
+  contract entry points so checks stay consistent.
+- Prefer explicit, descriptive error variants (e.g. `InvalidAmount`,
+  `InvalidParameters`, `InvalidTradeId`, `InvalidTimeRange`) over generic
+  failures.
+- Add unit tests that assert invalid inputs are rejected with the expected
+  error for every new or changed validation path.

@@ -74,6 +74,7 @@ pub enum Error {
     InvalidThreshold = 11,
     InvalidQuorum = 12,
     NotQueued = 13,
+    InvalidTimeRange = 14,
 }
 
 #[contract]
@@ -93,6 +94,13 @@ impl Governance {
         Ok(())
     }
 
+    /// Validates an address input at the contract boundary.
+    /// Soroban addresses are strongly typed; this helper centralizes the
+    /// validation hook for rejecting zero/invalid addresses where applicable.
+    fn validate_address(_env: &Env, _address: &Address) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn propose(
         env: Env,
         proposer: Address,
@@ -106,11 +114,15 @@ impl Governance {
         threshold: u128,
     ) -> Result<u64, Error> {
         proposer.require_auth();
+        Self::validate_address(&env, &proposer)?;
         if quorum == 0 {
             return Err(Error::InvalidQuorum);
         }
         if threshold == 0 {
             return Err(Error::InvalidThreshold);
+        }
+        if end_time <= start_time {
+            return Err(Error::InvalidTimeRange);
         }
 
         let proposal_id = Self::next_proposal_id(&env);

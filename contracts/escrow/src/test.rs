@@ -132,3 +132,15 @@ fn get_missing_fails() {
     let f = setup();
     assert_eq!(f.client.try_get(&42), Err(Ok(Error::EscrowNotFound)));
 }
+
+#[test]
+fn fund_rejects_zero_trade_id() {
+    let f = setup();
+    f.token_admin.mint(&f.buyer, &500);
+
+    let res = f.client.try_fund(&0, &f.buyer, &f.seller, &f.token, &500);
+    assert_eq!(res, Err(Ok(Error::InvalidTradeId)));
+
+    // No escrow record should be created for an invalid trade id.
+    assert_eq!(f.client.try_get(&0), Err(Ok(Error::EscrowNotFound)));
+}
