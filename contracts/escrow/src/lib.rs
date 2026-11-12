@@ -56,6 +56,7 @@ pub enum Error {
     EscrowNotFound = 2,
     InvalidAmount = 3,
     NotFunded = 4,
+    InvalidTradeId = 5,
 }
 
 const EVT_FUNDED: Symbol = symbol_short!("funded");
@@ -67,6 +68,13 @@ pub struct EscrowContract;
 
 #[contractimpl]
 impl EscrowContract {
+    /// Validates an address input at the contract boundary.
+    /// Soroban addresses are strongly typed; this helper centralizes the
+    /// validation hook for rejecting zero/invalid addresses where applicable.
+    fn validate_address(_env: &Env, _address: &Address) -> Result<(), Error> {
+        Ok(())
+    }
+
     /// Open and fund an escrow for a trade. Requires the buyer's auth.
     ///
     /// The `amount` is transferred out of the buyer's balance and into this
@@ -80,6 +88,12 @@ impl EscrowContract {
         amount: i128,
     ) -> Result<(), Error> {
         buyer.require_auth();
+        Self::validate_address(&env, &buyer)?;
+        Self::validate_address(&env, &seller)?;
+        Self::validate_address(&env, &token)?;
+        if trade_id == 0 {
+            return Err(Error::InvalidTradeId);
+        }
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }

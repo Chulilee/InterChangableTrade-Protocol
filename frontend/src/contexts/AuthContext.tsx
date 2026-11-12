@@ -1,6 +1,11 @@
-import { createContext, useContext, createSignal, createEffect, Accessor } from 'solid-js';
+﻿import { createContext, useContext, createSignal, createEffect, Accessor } from 'solid-js';
 import { createStore, Store, SetStoreFunction } from 'solid-js/store';
 import { useNavigate } from '@solidjs/router';
+import {
+  getCsrfHeaders,
+  purgeSensitiveBrowserStorage,
+  secureTokenStorage,
+} from '../utils/secureStorage';
 
 // Types
 export interface User {
@@ -13,8 +18,13 @@ export interface User {
 }
 
 export interface AuthTokens {
+  /** Kept in memory only (never persisted to localStorage/sessionStorage). */
   accessToken: string;
-  refreshToken: string;
+  /**
+   * Refresh tokens are expected to be managed via httpOnly cookies set by the
+   * backend and are not stored in JavaScript-accessible storage.
+   */
+  refreshToken?: string;
   expiresAt: number;
 }
 
@@ -33,6 +43,8 @@ interface AuthContextType {
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
+  /** Returns a valid in-memory access token, refreshing if needed. */
+  getAccessToken: () => Promise<string | null>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
 }
@@ -42,6 +54,16 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 const TOKEN_REFRESH_THRESHOLD = 5 * 60 * 1000; // Refresh 5 minutes before expiration
 
 const AuthContext = createContext<AuthContextType>();
+
+function clearSensitiveSessionState(
+  setState: SetStoreFunction<AuthState>,
+  setCurrentUser: (user: User | null) => void
+) {
+  secureTokenStorage.clear();
+  purgeSensitiveBrowserStorage();
+  setState({ isAuthenticated: false, user: null, isLoading: false });
+  setCurrentUser(null);
+}
 
 export function AuthProvider(props: { children: any }) {
   const [state, setState] = createStore<AuthState>({
@@ -53,49 +75,29 @@ export function AuthProvider(props: { children: any }) {
 
   const [currentUser, setCurrentUser] = createSignal<User | null>(null);
 
-  // Secure token storage functions
-  const getStoredTokens = (): AuthTokens | null => {
-    try {
-      const tokens = localStorage.getItem('auth_tokens');
-      if (tokens) {
-        return JSON.parse(tokens);
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  };
-
   const storeTokens = (tokens: AuthTokens) => {
-    try {
-      localStorage.setItem('auth_tokens', JSON.stringify(tokens));
-    } catch (error) {
-      console.error('Failed to store tokens:', error);
-    }
+    // Access token is kept in memory only; never persist sensitive tokens.
+    secureTokenStorage.setTokens({
+      accessToken: tokens.accessToken,
+      expiresAt: tokens.expiresAt,
+    });
+    purgeSensitiveBrowserStorage();
   };
 
   const clearTokens = () => {
-    try {
-      localStorage.removeItem('auth_tokens');
-    } catch (error) {
-      console.error('Failed to clear tokens:', error);
-    }
+    secureTokenStorage.clear();
+    purgeSensitiveBrowserStorage();
   };
 
-  // Token refresh logic
+  // Token refresh logic (refresh token is expected in an httpOnly cookie).
   const refreshToken = async (): Promise<boolean> => {
-    const tokens = getStoredTokens();
-    if (!tokens?.refreshToken) {
-      return false;
-    }
-
     try {
       const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
-        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
         credentials: 'include'
       });
 
@@ -104,36 +106,38 @@ export function AuthProvider(props: { children: any }) {
       }
 
       const data = await response.json();
+      const accessToken = data.accessToken as string | undefined;
+      const expiresIn = Number(data.expiresIn ?? 0);
+      if (!accessToken || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+        throw new Error('Invalid refresh response');
+      }
+
       const newTokens: AuthTokens = {
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken || tokens.refreshToken,
-        expiresAt: Date.now() + data.expiresIn * 1000
+        accessToken,
+        expiresAt: Date.now() + expiresIn * 1000
       };
       storeTokens(newTokens);
       return true;
     } catch (error) {
       console.error('Token refresh error:', error);
-      clearTokens();
-      setState({ isAuthenticated: false, user: null, isLoading: false });
-      setCurrentUser(null);
+      clearSensitiveSessionState(setState, setCurrentUser);
       return false;
     }
   };
 
-  // Get valid access token (refreshes if needed)
-  const getValidAccessToken = async (): Promise<string | null> => {
-    const tokens = getStoredTokens();
-    if (!tokens) return null;
+  // Get valid access token (refreshes if needed).
+  const getAccessToken = async (): Promise<string | null> => {
+    const accessToken = secureTokenStorage.getAccessToken();
+    const expiresAt = secureTokenStorage.getExpiresAt();
+    if (!accessToken || !expiresAt) return null;
 
-    // Check if token needs refreshing
-    if (Date.now() >= tokens.expiresAt - TOKEN_REFRESH_THRESHOLD) {
+    if (Date.now() >= expiresAt - TOKEN_REFRESH_THRESHOLD) {
       const refreshed = await refreshToken();
       if (!refreshed) return null;
-      const newTokens = getStoredTokens();
-      return newTokens?.accessToken || null;
+      return secureTokenStorage.getAccessToken();
     }
 
-    return tokens.accessToken;
+    return accessToken;
   };
 
   // Sign in function
@@ -144,21 +148,21 @@ export function AuthProvider(props: { children: any }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({ email, password }),
         credentials: 'include'
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Login failed');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error((errorData as any).message || 'Login failed');
       }
 
       const data = await response.json();
       const tokens: AuthTokens = {
         accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        expiresAt: Date.now() + data.expiresIn * 1000
+        expiresAt: Date.now() + Number(data.expiresIn ?? 0) * 1000
       };
       storeTokens(tokens);
 
@@ -179,21 +183,21 @@ export function AuthProvider(props: { children: any }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({ email, password, name }),
         credentials: 'include'
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Registration failed');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error((errorData as any).message || 'Registration failed');
       }
 
       const data = await response.json();
       const tokens: AuthTokens = {
         accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        expiresAt: Date.now() + data.expiresIn * 1000
+        expiresAt: Date.now() + Number(data.expiresIn ?? 0) * 1000
       };
       storeTokens(tokens);
 
@@ -209,13 +213,24 @@ export function AuthProvider(props: { children: any }) {
   // Sign out function
   const signOut = async () => {
     try {
-      const accessToken = await getValidAccessToken();
+      const accessToken = await getAccessToken();
       if (accessToken) {
         await fetch(`${API_BASE_URL}/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...getCsrfHeaders(),
+          },
+          credentials: 'include'
+        });
+      } else {
+        // Best-effort logout to clear httpOnly refresh cookie server-side.
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getCsrfHeaders(),
           },
           credentials: 'include'
         });
@@ -237,14 +252,15 @@ export function AuthProvider(props: { children: any }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({ email }),
         credentials: 'include'
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to send reset email');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error((errorData as any).message || 'Failed to send reset email');
       }
       setState({ isLoading: false });
     } catch (error) {
@@ -261,14 +277,15 @@ export function AuthProvider(props: { children: any }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({ token, newPassword }),
         credentials: 'include'
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to reset password');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error((errorData as any).message || 'Failed to reset password');
       }
       setState({ isLoading: false });
     } catch (error) {
@@ -277,38 +294,42 @@ export function AuthProvider(props: { children: any }) {
     }
   };
 
-  // Initialize auth state
+  // Initialize auth state.
+  // Sensitive tokens are never persisted in localStorage; if we don't have an
+  // in-memory access token (e.g. full page reload), attempt a cookie-based
+  // refresh to rehydrate a session without exposing refresh tokens to JS.
   createEffect(async () => {
-    const tokens = getStoredTokens();
-    if (tokens) {
-      // Check if token is still valid
-      if (Date.now() < tokens.expiresAt) {
-        // Try to refresh if close to expiration, or fetch user profile
-        try {
-          const accessToken = await getValidAccessToken();
-          if (accessToken) {
-            // Fetch user profile
-            const userResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              },
-              credentials: 'include'
-            });
-            if (userResponse.ok) {
-              const user = await userResponse.json();
-              setState({ user, isAuthenticated: true, isLoading: false });
-              setCurrentUser(user);
-              return;
-            }
-          }
-        } catch {
-          // If fetching user fails, clear state
+    purgeSensitiveBrowserStorage();
+    const existing = secureTokenStorage.getAccessToken();
+    if (!existing) {
+      const refreshed = await refreshToken();
+      if (!refreshed) {
+        setState({ isLoading: false });
+        return;
+      }
+    }
+
+    try {
+      const accessToken = await getAccessToken();
+      if (accessToken) {
+        const userResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          },
+          credentials: 'include'
+        });
+        if (userResponse.ok) {
+          const user = await userResponse.json();
+          setState({ user, isAuthenticated: true, isLoading: false });
+          setCurrentUser(user);
+          return;
         }
       }
-      // If we get here, token is invalid/expired
-      clearTokens();
+    } catch {
+      // Fall through to clear state.
     }
-    setState({ isLoading: false });
+
+    clearSensitiveSessionState(setState, setCurrentUser);
   });
 
   // Set up periodic token refresh
@@ -330,6 +351,7 @@ export function AuthProvider(props: { children: any }) {
     signUp,
     signOut,
     refreshToken,
+    getAccessToken,
     forgotPassword,
     resetPassword
   };
@@ -347,14 +369,14 @@ export function useAuth() {
 
 // Hook to get authenticated user, redirects if not authenticated
 export function useRequiredAuth() {
-  const { state, signOut } = useAuth();
+  const auth = useAuth();
   const navigate = useNavigate();
 
   createEffect(() => {
-    if (!state.isLoading && !state.isAuthenticated) {
+    if (!auth.state.isLoading && !auth.state.isAuthenticated) {
       navigate('/sign-in');
     }
   });
 
-  return useAuth();
+  return auth;
 }

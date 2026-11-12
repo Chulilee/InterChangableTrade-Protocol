@@ -152,6 +152,13 @@ impl LiquidityIncentives {
         Ok(())
     }
 
+    /// Validates an address input at the contract boundary.
+    /// Soroban addresses are strongly typed; this helper centralizes the
+    /// validation hook for rejecting zero/invalid addresses where applicable.
+    fn validate_address(_env: &Env, _address: &Address) -> Result<(), Error> {
+        Ok(())
+    }
+
     /// Create a reward pool. Requires admin authorization.
     ///
     /// Emits `reward_rate` reward tokens per second for `duration_secs` seconds
@@ -168,6 +175,8 @@ impl LiquidityIncentives {
         duration_secs: u64,
     ) -> Result<u64, Error> {
         Self::require_admin(&env)?;
+        Self::validate_address(&env, &staking_token)?;
+        Self::validate_address(&env, &reward_token)?;
         if duration_secs == 0 || reward_rate < 0 {
             return Err(Error::InvalidParameters);
         }

@@ -1,40 +1,29 @@
-import { useAuth } from '../contexts/AuthContext';
+﻿import { useAuth } from '../contexts/AuthContext';
+import { getCsrfHeaders } from '../utils/secureStorage';
 
 export function useApi() {
-  const { refreshToken } = useAuth();
-  
+  const { getAccessToken, refreshToken } = useAuth();
+
   const apiRequest = async (
     url: string,
     options: RequestInit = {}
   ): Promise<Response> => {
-    const tokens = localStorage.getItem('auth_tokens');
-    if (!tokens) {
-      throw new Error('No authentication tokens found');
+    let accessToken = await getAccessToken();
+    if (!accessToken) {
+      throw new Error('No authentication token available');
     }
 
-    const parsedTokens = JSON.parse(tokens);
-    let accessToken = parsedTokens.accessToken;
-    
-    // Check if token needs refreshing
-    const TOKEN_REFRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes
-    if (Date.now() >= parsedTokens.expiresAt - TOKEN_REFRESH_THRESHOLD) {
-      const refreshed = await refreshToken();
-      if (!refreshed) {
-        throw new Error('Failed to refresh token');
-      }
-      const newTokens = localStorage.getItem('auth_tokens');
-      if (newTokens) {
-        accessToken = JSON.parse(newTokens).accessToken;
-      }
-    }
-
-    // Add authorization header. Content-Type stays unset for FormData bodies
-    // (e.g. avatar uploads): the browser must supply the multipart boundary,
-    // and forcing application/json here would corrupt the upload.
+    // Add authorization and CSRF headers. Content-Type stays unset for FormData
+    // bodies (e.g. avatar uploads): the browser must supply the multipart
+    // boundary, and forcing application/json here would corrupt the upload.
     const headers = new Headers(options.headers);
     headers.set('Authorization', `Bearer ${accessToken}`);
     if (!(options.body instanceof FormData)) {
       headers.set('Content-Type', 'application/json');
+    }
+    const csrfHeaders = getCsrfHeaders();
+    for (const [key, value] of Object.entries(csrfHeaders)) {
+      headers.set(key, value);
     }
 
     const response = await fetch(url, {
@@ -47,10 +36,9 @@ export function useApi() {
     if (response.status === 401) {
       const refreshed = await refreshToken();
       if (refreshed) {
-        const newTokens = localStorage.getItem('auth_tokens');
-        if (newTokens) {
-          const newAccessToken = JSON.parse(newTokens).accessToken;
-          headers.set('Authorization', `Bearer ${newAccessToken}`);
+        accessToken = await getAccessToken();
+        if (accessToken) {
+          headers.set('Authorization', `Bearer ${accessToken}`);
           return fetch(url, {
             ...options,
             headers,

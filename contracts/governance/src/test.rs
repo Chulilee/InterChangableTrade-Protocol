@@ -237,3 +237,36 @@ fn cast_vote_updates_count_correctly() {
     assert_eq!(votes.len(), 1);
     assert_eq!(votes.get(0).unwrap().weight, 200);
 }
+
+#[test]
+fn propose_rejects_invalid_time_range() {
+    let (env, client, _admin) = setup();
+    let proposer = Address::generate(&env);
+
+    // end_time must be strictly greater than start_time.
+    let equal = client.try_propose(
+        &proposer,
+        &symbol_short!("time"),
+        &symbol_short!("param"),
+        &10,
+        &10,
+        &10,
+        &1,
+        &10,
+        &10,
+    );
+    assert_eq!(equal, Err(Ok(Error::InvalidTimeRange)));
+
+    let inverted = client.try_propose(
+        &proposer,
+        &symbol_short!("time"),
+        &symbol_short!("param"),
+        &10,
+        &20,
+        &10,
+        &1,
+        &10,
+        &10,
+    );
+    assert_eq!(inverted, Err(Ok(Error::InvalidTimeRange)));
+}
