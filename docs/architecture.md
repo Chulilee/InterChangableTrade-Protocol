@@ -14,7 +14,7 @@ contracts. Each contract lives under `contracts/<name>/` and can be built and de
 | `trade-settlement`      | Atomic bilateral settlement with retry, batching, and a netting engine. |
 | `fee-commission`        | Calculates, collects, and distributes protocol and maker/taker fees.  |
 | `liquidity-incentives`  | Rewards liquidity providers over time via a reward-per-liquidity accumulator. |
-| `orderbook`             | Minimal flat order list (legacy scaffold; see "Trading surfaces").    |
+| `orderbook`             | **Deprecated** minimal flat order list (legacy scaffold; migrate to `matching-engine` via [`docs/orderbook-migration.md`](orderbook-migration.md)). |
 | `matching-engine`       | Price-time priority order book with partial fills and match simulation. |
 | `price-oracle`          | Price feeds with deviation/freshness checks and secondary-source fallback. |
 | `margining-liquidation` | Margin accounts, collateral, and liquidation of leveraged positions.  |
@@ -57,8 +57,11 @@ price-time priority, partial fills, and match simulation. Executed matches are
 emitted as `executed` events; on-chain settlement of matched trades is not yet
 wired to `trade-settlement` (see "Open integration gaps").
 
-`orderbook` is an earlier, simpler scaffold (a flat, unscoped order list) kept
-for reference; `matching-engine` is the canonical order book going forward.
+`orderbook` is **deprecated** — an earlier, simpler scaffold (a flat, unscoped
+order list) kept only for reference and historical benchmarks; `matching-engine`
+is the canonical order book going forward (see
+[ADR-004](adr/ADR-004-why-matching-engine-replaced-orderbook.md) and the
+[migration guide](orderbook-migration.md)).
 
 ## Design notes
 

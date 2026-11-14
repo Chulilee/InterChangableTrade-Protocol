@@ -21,7 +21,7 @@ together and for the known integration gaps.
 | `trade-settlement` | Atomic bilateral settlement with retry, batching, and netting. |
 | `fee-commission` | Calculates, collects, and distributes protocol and maker/taker fees. |
 | `liquidity-incentives` | LP rewards via a reward-per-liquidity accumulator. |
-| `orderbook` | Minimal flat order list (legacy scaffold; see the architecture doc). |
+| `orderbook` | **Deprecated** minimal flat order list (legacy scaffold; see [docs/orderbook-migration.md](docs/orderbook-migration.md)). |
 | `matching-engine` | Price-time priority order book with partial fills and match simulation. |
 | `price-oracle` | Price feeds with deviation/freshness checks and fallback source. |
 | `margining-liquidation` | Margin accounts, collateral, and liquidation of leveraged positions. |

@@ -1,15 +1,31 @@
 #![no_std]
 #![deny(warnings)]
 
-//! # Orderbook Contract
+//! # Orderbook Contract (Deprecated)
 //!
-//! **⚠️ DEPRECATED**: This contract is deprecated and no longer maintained.
-//! Use the `matching-engine` contract instead, which is the canonical order book
-//! implementation with proper price-time priority matching, partial fills, and
-//! atomic settlement hooks.
+//! **Deprecated:** `orderbook` is a legacy flat order-list scaffold and is no
+//! longer maintained or wired into production trading flows. Use the
+//! `matching-engine` contract (`contracts/matching-engine`) instead.
 //!
-//! This contract remains deployed for backward compatibility but will not receive
-//! updates or bug fixes. New deployments should use `matching-engine`.
+//! See [ADR-004 (`docs/adr/ADR-004-why-matching-engine-replaced-orderbook.md`)](../../docs/adr/ADR-004-why-matching-engine-replaced-orderbook.md)
+//! for the architectural decision and
+//! [`docs/orderbook-migration.md`](../../docs/orderbook-migration.md) for the
+//! complete entry-point, data-key, type, and event migration guide.
+//! (Note: settlement-path deduplication between `escrow` and `trade-settlement`
+//! is tracked separately under issue #62 and ADR-006.)
+//!
+//! ## Migration Summary (`orderbook` -> `matching-engine`)
+//!
+//! | Legacy `orderbook` | Canonical `matching-engine` | Key Differences |
+//! | --- | --- | --- |
+//! | *(no initializer)* | `initialize(env, admin) -> Result<(), Error>` | One-time admin initialization required before placing orders. |
+//! | `place_order(env, owner, side, price: u64, quantity: u64) -> u64` | `place_order(env, trader, asset, quote, side, price: i128, quantity: i128) -> Result<u64, Error>` | Market-scoped by `(asset, quote)`; uses signed `i128` amounts/prices; validates positive price/quantity. |
+//! | `cancel_order(env, owner, order_id) -> Result<(), Error>` | `cancel_order(env, asset, quote, order_id, caller) -> Result<(), Error>` | Requires `(asset, quote)` market key; removes remaining quantity from the resting `PriceLevel`. |
+//! | `update_order(env, owner, order_id, new_price, new_quantity)` | `cancel_order(...)` + `place_order(...)` | Cancel-and-replace preserves price-time (FIFO) priority at each `PriceLevel`. |
+//! | *(no matching entry point)* | `match_orders(env, asset, quote) -> Result<MatchResult, Error>` | Deterministic price-time priority matching with partial fills and bounded work (`MAX_TRADES_PER_CALL`). |
+//! | *(no simulation entry point)* | `simulate_match(env, asset, quote, incoming_order) -> Result<MatchResult, Error>` | Read-only pre-flight simulation returning expected fills and remaining quantity. |
+//! | `get_order_by_id(env, order_id) -> Option<Order>` | `get_order(env, asset, quote, order_id) -> Result<Order, Error>` | Scoped by `(asset, quote)` market; returns typed `Error::OrderNotFound` / `Error::MarketNotFound`. |
+//! | `ORDERS` / `NEXT_ID` (`Symbol` keys) | `DataKey::OrderBook((asset, quote))`, `DataKey::NextOrderId`, `DataKey::NextTradeId` | Typed `#[contracttype] DataKey` enum with per-market `MarketOrderBook` (`bids`, `asks`, `all_orders`). |
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
