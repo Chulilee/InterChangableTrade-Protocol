@@ -7,6 +7,7 @@ use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};
 struct Fixture {
     env: Env,
     client: RiskManagerClient<'static>,
+    access_control: Address,
     pauser: Address,
     trader: Address,
 }
@@ -32,6 +33,7 @@ fn setup() -> Fixture {
     Fixture {
         env,
         client,
+        access_control: ac_id,
         pauser,
         trader,
     }
@@ -40,9 +42,49 @@ fn setup() -> Fixture {
 #[test]
 fn initialize_sets_defaults() {
     let f = setup();
+    assert!(!f.client.is_market_paused());
+    assert_eq!(f.client.get_max_order_size(), 1_000);
+    assert_eq!(f.client.get_pauser(), f.access_control);
+    assert_eq!(f.client.get_access_control(), f.access_control);
     // Market starts unpaused and limits pass under the configured cap
     // (panics if the check fails).
     f.client.check_limits(&500, &f.trader);
+}
+
+#[test]
+fn getters_reflect_pause_and_unpause() {
+    let f = setup();
+    assert!(!f.client.is_market_paused());
+
+    f.client.pause_market(&f.pauser);
+    assert!(f.client.is_market_paused());
+
+    f.client.unpause_market(&f.pauser);
+    assert!(!f.client.is_market_paused());
+}
+
+#[test]
+fn get_max_order_size_reflects_set_limit() {
+    let f = setup();
+    assert_eq!(f.client.get_max_order_size(), 1_000);
+
+    f.client.set_limit(&f.pauser, &2_500);
+    assert_eq!(f.client.get_max_order_size(), 2_500);
+}
+
+#[test]
+fn getters_on_uninitialized_contract() {
+    let env = Env::default();
+    let contract_id = env.register(RiskManager, ());
+    let client = RiskManagerClient::new(&env, &contract_id);
+
+    assert!(!client.is_market_paused());
+    assert_eq!(client.get_max_order_size(), 0);
+    assert_eq!(client.try_get_pauser(), Err(Ok(RiskError::NotInitialized)));
+    assert_eq!(
+        client.try_get_access_control(),
+        Err(Ok(RiskError::NotInitialized))
+    );
 }
 
 #[test]
