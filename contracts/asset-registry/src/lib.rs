@@ -5,6 +5,14 @@
 //! Tracks tokenized assets that are eligible to trade within the
 //! InterChangableTrade ecosystem. Each asset is registered by an admin and
 //! maps to an on-chain Stellar asset (token contract) address.
+//!
+//! ## Enabled Flag Lifecycle
+//!
+//! Newly registered assets start with `enabled: true`. The admin can
+//! temporarily pause trading for an asset without deleting its metadata by
+//! calling [`AssetRegistry::set_asset_enabled`] with `enabled: false`, and
+//! re-enable it later with `enabled: true`. Calling [`AssetRegistry::remove`]
+//! deletes the asset entry from the registry permanently.
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, Symbol, Vec,
@@ -47,6 +55,7 @@ pub enum Error {
 
 const EVT_REGISTERED: Symbol = symbol_short!("added");
 const EVT_REMOVED: Symbol = symbol_short!("removed");
+const EVT_TOGGLED: Symbol = symbol_short!("toggled");
 
 #[contract]
 pub struct AssetRegistry;
@@ -95,6 +104,26 @@ impl AssetRegistry {
         Ok(())
     }
 
+    /// Enable or disable an existing registered asset without removing its metadata.
+    /// Requires admin authorization.
+    pub fn set_asset_enabled(env: Env, token: Address, enabled: bool) -> Result<(), Error> {
+        let admin = Self::admin(&env)?;
+        admin.require_auth();
+
+        let key = DataKey::Asset(token.clone());
+        let mut asset: Asset = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::AssetNotFound)?;
+
+        asset.enabled = enabled;
+        env.storage().persistent().set(&key, &asset);
+
+        env.events().publish((EVT_TOGGLED, token), enabled);
+        Ok(())
+    }
+
     /// Remove an asset from the registry. Requires admin authorization.
     pub fn remove(env: Env, token: Address) -> Result<(), Error> {
         let admin = Self::admin(&env)?;
@@ -137,6 +166,28 @@ impl AssetRegistry {
             .instance()
             .get(&DataKey::Assets)
             .unwrap_or(Vec::new(&env))
+    }
+
+    /// List only registered asset addresses that are currently enabled.
+    pub fn list_enabled(env: Env) -> Vec<Address> {
+        let assets: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Assets)
+            .unwrap_or(Vec::new(&env));
+        let mut enabled_assets = Vec::new(&env);
+        for token in assets.iter() {
+            if let Some(asset) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, Asset>(&DataKey::Asset(token.clone()))
+            {
+                if asset.enabled {
+                    enabled_assets.push_back(token);
+                }
+            }
+        }
+        enabled_assets
     }
 
     fn admin(env: &Env) -> Result<Address, Error> {

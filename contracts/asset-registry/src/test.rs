@@ -1,7 +1,11 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Events as _},
+    Address, Env, IntoVal,
+};
 
 fn setup() -> (Env, AssetRegistryClient<'static>, Address) {
     let env = Env::default();
@@ -56,4 +60,60 @@ fn remove_missing_fails() {
     let (env, client, _admin) = setup();
     let token = Address::generate(&env);
     assert_eq!(client.try_remove(&token), Err(Ok(Error::AssetNotFound)));
+}
+
+#[test]
+fn set_asset_enabled_round_trip_and_list_enabled() {
+    let (env, client, _admin) = setup();
+    let usdc = Address::generate(&env);
+    let xlm = Address::generate(&env);
+    client.register(&usdc, &symbol_short!("USDC"));
+    client.register(&xlm, &symbol_short!("XLM"));
+
+    assert_eq!(client.list().len(), 2);
+    assert_eq!(client.list_enabled().len(), 2);
+
+    client.set_asset_enabled(&usdc, &false);
+    assert!(!client.get(&usdc).enabled);
+    assert!(client.get(&xlm).enabled);
+
+    let enabled = client.list_enabled();
+    assert_eq!(enabled.len(), 1);
+    assert_eq!(enabled.get_unchecked(0), xlm);
+
+    client.set_asset_enabled(&usdc, &true);
+    assert!(client.get(&usdc).enabled);
+    assert_eq!(client.list_enabled().len(), 2);
+}
+
+#[test]
+fn set_asset_enabled_emits_event() {
+    let (env, client, _admin) = setup();
+    let token = Address::generate(&env);
+    client.register(&token, &symbol_short!("USDC"));
+
+    client.set_asset_enabled(&token, &false);
+    let events = env.events().all();
+    let last = events.last().unwrap();
+    assert_eq!(last.2, false.into_val(&env));
+}
+
+#[test]
+fn set_asset_enabled_unknown_asset_fails() {
+    let (env, client, _admin) = setup();
+    let unknown = Address::generate(&env);
+    let res = client.try_set_asset_enabled(&unknown, &false);
+    assert_eq!(res, Err(Ok(Error::AssetNotFound)));
+}
+
+#[test]
+fn set_asset_enabled_requires_admin_auth() {
+    let (env, client, _admin) = setup();
+    let token = Address::generate(&env);
+    client.register(&token, &symbol_short!("USDC"));
+
+    env.mock_auths(&[]);
+    let res = client.try_set_asset_enabled(&token, &false);
+    assert!(res.is_err());
+    assert!(client.get(&token).enabled);
 }
