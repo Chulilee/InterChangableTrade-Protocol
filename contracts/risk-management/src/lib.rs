@@ -118,6 +118,32 @@ impl RiskManager {
         Ok(())
     }
 
+    /// Return whether the market is currently paused.
+    pub fn is_market_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::MarketPaused)
+            .unwrap_or(false)
+    }
+
+    /// Get the currently configured maximum order size.
+    pub fn get_max_order_size(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::MaxOrderSize)
+            .unwrap_or(0)
+    }
+
+    /// Get the configured pauser (access-control contract) address.
+    pub fn get_pauser(env: Env) -> Result<Address, RiskError> {
+        Self::access_control(&env)
+    }
+
+    /// Get the configured access-control contract address.
+    pub fn get_access_control(env: Env) -> Result<Address, RiskError> {
+        Self::access_control(&env)
+    }
+
     /// Get the current cumulative exposure for a trader.
     pub fn get_exposure(env: Env, trader: Address) -> i128 {
         env.storage()
