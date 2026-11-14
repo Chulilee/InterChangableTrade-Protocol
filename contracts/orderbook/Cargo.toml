@@ -9,6 +9,10 @@ repository.workspace = true
 crate-type = ["cdylib", "rlib"]
 doctest = false
 
+[features]
+default = ["legacy-orderbook"]
+legacy-orderbook = []
+
 [dependencies]
 soroban-sdk = { workspace = true }
 
