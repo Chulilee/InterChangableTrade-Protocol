@@ -358,6 +358,127 @@ fn mark_all_read_with_nothing_unread_returns_zero() {
 }
 
 // ---------------------------------------------------------------------------
+// Delete / clear_all
+// ---------------------------------------------------------------------------
+
+#[test]
+fn delete_unread_adjusts_count_and_removes_record() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+
+    let id1 = f.client.send(
+        &f.admin,
+        &recipient,
+        &NotificationKind::Trade,
+        &symbol_short!("t1"),
+        &None,
+    );
+    let id2 = f.client.send(
+        &f.admin,
+        &recipient,
+        &NotificationKind::Message,
+        &symbol_short!("m2"),
+        &None,
+    );
+    assert_eq!(f.client.unread_count(&recipient), 2);
+
+    f.client.delete(&id1, &recipient);
+    assert_eq!(f.client.unread_count(&recipient), 1);
+    assert_eq!(f.client.try_get(&id1), Err(Ok(Error::NotificationNotFound)));
+    assert_eq!(
+        f.client.try_mark_read(&id1, &recipient),
+        Err(Ok(Error::NotificationNotFound))
+    );
+
+    let page = f.client.get_user_notifications(&recipient, &None, &0);
+    assert_eq!(page.total, 1);
+    assert_eq!(page.unread_count, 1);
+    assert_eq!(page.notifications.get_unchecked(0).id, id2);
+}
+
+#[test]
+fn delete_read_does_not_adjust_unread_count() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+
+    let id1 = f.client.send(
+        &f.admin,
+        &recipient,
+        &NotificationKind::Trade,
+        &symbol_short!("t1"),
+        &None,
+    );
+    let id2 = f.client.send(
+        &f.admin,
+        &recipient,
+        &NotificationKind::Message,
+        &symbol_short!("m2"),
+        &None,
+    );
+
+    f.client.mark_read(&id1, &recipient);
+    assert_eq!(f.client.unread_count(&recipient), 1);
+
+    f.client.delete_notification(&id1, &recipient);
+    assert_eq!(f.client.unread_count(&recipient), 1);
+    assert_eq!(f.client.try_get(&id1), Err(Ok(Error::NotificationNotFound)));
+
+    let page = f.client.get_user_notifications(&recipient, &None, &0);
+    assert_eq!(page.total, 1);
+    assert_eq!(page.notifications.get_unchecked(0).id, id2);
+}
+
+#[test]
+fn delete_non_recipient_fails() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+    let stranger = Address::generate(&f.env);
+
+    let id = f.client.send(
+        &f.admin,
+        &recipient,
+        &NotificationKind::System,
+        &symbol_short!("alert"),
+        &None,
+    );
+    let res = f.client.try_delete(&id, &stranger);
+    assert_eq!(res, Err(Ok(Error::Unauthorized)));
+    assert_eq!(f.client.unread_count(&recipient), 1);
+}
+
+#[test]
+fn delete_missing_notification_fails() {
+    let f = setup();
+    let user = Address::generate(&f.env);
+    assert_eq!(
+        f.client.try_delete(&999, &user),
+        Err(Ok(Error::NotificationNotFound))
+    );
+}
+
+#[test]
+fn clear_all_removes_entries_and_is_idempotent() {
+    let f = setup();
+    let recipient = Address::generate(&f.env);
+    let ids = seed_notifications(&f, &recipient, 3);
+
+    let removed = f.client.clear_all(&recipient);
+    assert_eq!(removed, 3);
+    assert_eq!(f.client.unread_count(&recipient), 0);
+
+    let page = f.client.get_user_notifications(&recipient, &None, &0);
+    assert_eq!(page.total, 0);
+    assert_eq!(page.notifications.len(), 0);
+
+    for id in ids.iter() {
+        assert_eq!(f.client.try_get(&id), Err(Ok(Error::NotificationNotFound)));
+    }
+
+    // Calling clear_all again on an empty inbox returns 0.
+    assert_eq!(f.client.clear_all(&recipient), 0);
+}
+
+// ---------------------------------------------------------------------------
 // Email preferences
 // ---------------------------------------------------------------------------
 

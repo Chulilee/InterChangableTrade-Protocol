@@ -24,6 +24,8 @@ use soroban_sdk::{
 const EVT_NOTIFICATION: Symbol = symbol_short!("notified");
 const EVT_READ: Symbol = symbol_short!("read");
 const EVT_READ_ALL: Symbol = symbol_short!("read_all");
+const EVT_DELETED: Symbol = symbol_short!("deleted");
+const EVT_CLEARED: Symbol = symbol_short!("cleared");
 const EVT_EMAIL_PREF: Symbol = symbol_short!("pref_set");
 
 /// Hard upper bound on the number of notifications returned by a single
@@ -391,6 +393,97 @@ impl NotificationService {
         env.events().publish((EVT_READ_ALL, marked), caller);
 
         Ok(marked)
+    }
+
+    /// Delete a single notification owned by `caller`.
+    ///
+    /// Performs an O(n) scan over the caller's notification id list (bounded
+    /// to that single user's inbox), removes the record from persistent
+    /// storage, decrements `UnreadCount` if the notification was unread, and
+    /// emits a `deleted` event.
+    pub fn delete(env: Env, id: u64, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let notification: Notification = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Notification(id))
+            .ok_or(Error::NotificationNotFound)?;
+
+        if notification.recipient != caller {
+            return Err(Error::Unauthorized);
+        }
+
+        env.storage().persistent().remove(&DataKey::Notification(id));
+
+        let user_ids: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserNotifications(caller.clone()))
+            .unwrap_or(Vec::new(&env));
+        let mut remaining = Vec::new(&env);
+        for existing_id in user_ids.iter() {
+            if existing_id != id {
+                remaining.push_back(existing_id);
+            }
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserNotifications(caller.clone()), &remaining);
+
+        if !notification.read {
+            let prev: u64 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::UnreadCount(caller.clone()))
+                .unwrap_or(0);
+            if prev > 0 {
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::UnreadCount(caller.clone()), &(prev - 1));
+            }
+        }
+
+        env.events().publish((EVT_DELETED, id), caller);
+
+        Ok(())
+    }
+
+    /// Alias for [`NotificationService::delete`].
+    pub fn delete_notification(env: Env, id: u64, caller: Address) -> Result<(), Error> {
+        Self::delete(env, id, caller)
+    }
+
+    /// Remove all notifications for `caller`, reset their notification id list
+    /// and unread count to zero, and return the number of notifications removed.
+    ///
+    /// Cost is O(n) in the size of `caller`'s inbox.
+    pub fn clear_all(env: Env, caller: Address) -> Result<u64, Error> {
+        caller.require_auth();
+        let user_ids: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserNotifications(caller.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let mut removed: u64 = 0;
+        for id in user_ids.iter() {
+            if env.storage().persistent().has(&DataKey::Notification(id)) {
+                env.storage().persistent().remove(&DataKey::Notification(id));
+                removed += 1;
+            }
+        }
+
+        env.storage().persistent().set(
+            &DataKey::UserNotifications(caller.clone()),
+            &Vec::<u64>::new(&env),
+        );
+        env.storage()
+            .persistent()
+            .set(&DataKey::UnreadCount(caller.clone()), &0u64);
+
+        env.events().publish((EVT_CLEARED, removed), caller);
+
+        Ok(removed)
     }
 
     /// Return the unread count for `user`.
